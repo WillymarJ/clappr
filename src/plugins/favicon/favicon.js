@@ -1,9 +1,9 @@
-import CorePlugin from 'base/core_plugin'
-import Events from 'base/events'
+import CorePlugin from '../../base/core_plugin'
+import Events from '../../base/events'
 import $ from 'clappr-zepto'
 
-import playIcon from 'icons/01-play.svg'
-import pauseIcon from 'icons/02-pause.svg'
+import playIcon from '../../icons/01-play.svg'
+import pauseIcon from '../../icons/02-pause.svg'
 
 const oldIcon = $('link[rel="shortcut icon"]')
 
@@ -31,15 +31,13 @@ export default class Favicon extends CorePlugin {
 
   bindEvents() {
     this.listenTo(this.core, Events.CORE_OPTIONS_CHANGE, this.configure)
-    this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_CONTAINERCHANGED, this.containerChanged)
-    if (this.core.mediaControl.container) {
-      this.containerChanged()
-    }
+    this.listenTo(this.core, Events.CORE_ACTIVE_CONTAINER_CHANGED, this.containerChanged)
+    this.core.activeContainer && this.containerChanged()
   }
 
   containerChanged() {
     this._container && this.stopListening(this._container)
-    this._container = this.core.mediaControl.container
+    this._container = this.core.activeContainer
     this.listenTo(this._container, Events.CONTAINER_PLAY, this.setPlayIcon)
     this.listenTo(this._container, Events.CONTAINER_PAUSE, this.setPauseIcon)
     this.listenTo(this._container, Events.CONTAINER_STOP, this.resetIcon)
@@ -73,16 +71,16 @@ export default class Favicon extends CorePlugin {
   }
 
   setPlayIcon() {
-    if (!this.playIcon) {
+    if (!this.playIcon)
       this.playIcon = this.createIcon(playIcon)
-    }
+
     this.changeIcon(this.playIcon)
   }
 
   setPauseIcon() {
-    if (!this.pauseIcon) {
+    if (!this.pauseIcon)
       this.pauseIcon = this.createIcon(pauseIcon)
-    }
+
     this.changeIcon(this.pauseIcon)
   }
 

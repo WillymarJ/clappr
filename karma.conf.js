@@ -1,7 +1,5 @@
 /* eslint-disable no-var */
-var dotenv = require('dotenv')
-
-dotenv.load()
+var path = require('path')
 
 var webpackConfig = require('./webpack-base-config')
 
@@ -12,6 +10,8 @@ webpackConfig.module.loaders.push({
   loader: 'istanbul-instrumenter-loader',
   enforce: 'post'
 })
+
+webpackConfig.resolve.modules.push(path.resolve(__dirname, 'src'))
 
 module.exports = function(config) {
   config.set({
@@ -26,7 +26,7 @@ module.exports = function(config) {
     // list of files / patterns to load in the browser
     files: [
       'test/**/*.js',
-      {pattern: 'test/fixtures/*.mp4', served: true, included: false}
+      { pattern: 'test/fixtures/*.mp4', served: true, included: false }
     ],
 
     // list of files to exclude
@@ -42,8 +42,8 @@ module.exports = function(config) {
 
     coverageReporter: {
       reporters: [
-        {type: 'lcovonly'},
-        {type: 'text-summary'}
+        { type: 'lcovonly' },
+        { type: 'text-summary' }
       ],
       dir: 'coverage'
     },

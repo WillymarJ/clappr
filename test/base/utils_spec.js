@@ -163,6 +163,62 @@ describe('Utils', function() {
     })
   })
 
+  describe('listContainsIgnoreCase', function() {
+    it('finds when it contains an item', function() {
+      const aList = ['audio/aac', 'video/mp4']
+      const anItem = 'audio/aac'
+
+      const doesitcontains = utils.listContainsIgnoreCase(anItem, aList)
+
+      expect(doesitcontains).to.be.true
+    })
+
+    it('finds when it contains a list of any letter case', function() {
+      const aList = ['AUDIO/aac', 'VIDEO/mp4']
+      const anItem = 'audio/aac'
+
+      const doesItContains = utils.listContainsIgnoreCase(anItem, aList)
+
+      expect(doesItContains).to.be.true
+    })
+
+    it('finds when it contains an item of any letter case', function() {
+      const aList = ['audio/aac', 'video/mp4']
+      const anItem = 'AUDIO/AAC'
+
+      const doesItContains = utils.listContainsIgnoreCase(anItem, aList)
+
+      expect(doesItContains).to.be.true
+    })
+
+    it('does not find when an item is not contained', function() {
+      const aList = ['audio/aac', 'video/mp4']
+      const anItem = 'application/x-mpegURL'
+
+      const doesItContains = utils.listContainsIgnoreCase(anItem, aList)
+
+      expect(doesItContains).to.be.false
+    })
+
+    it('does not find when an item is undefined', function() {
+      const aList = ['audio/aac', 'video/mp4']
+      const anItem = undefined
+
+      const doesItContains = utils.listContainsIgnoreCase(anItem, aList)
+
+      expect(doesItContains).to.be.false
+    })
+
+    it('does not find when the list is undefined', function() {
+      const aList = undefined
+      const anItem = 'audio/aac'
+
+      const doesItContains = utils.listContainsIgnoreCase(anItem, aList)
+
+      expect(doesItContains).to.be.false
+    })
+  })
+
   describe('Config', function() {
     beforeEach(function() {
       localStorage.removeItem('clappr.localhost.volume')
@@ -184,7 +240,7 @@ describe('Utils', function() {
 
   describe('DomRecycler', function() {
     it('can be configured', function() {
-      utils.DomRecycler.configure({foo: 'bar'})
+      utils.DomRecycler.configure({ foo: 'bar' })
       expect(utils.DomRecycler.options.foo).to.be.equal('bar')
       expect(utils.DomRecycler.options.recycleVideo).to.be.false
     })
@@ -195,19 +251,35 @@ describe('Utils', function() {
       expect($.zepto.isZ($el)).to.be.true
     })
 
-    it('does not recycle video tag by default', function(){
+    it('does not recycle video tag by default', function() {
       const video1 = utils.DomRecycler.create('video')
       utils.DomRecycler.garbage(video1)
       const video2 = utils.DomRecycler.create('video')
       expect(video1[0]).to.not.be.equal(video2[0])
     })
 
-    it('recycle video tag if recycleVideo option is set', function(){
-      utils.DomRecycler.configure({recycleVideo: true})
+    it('recycle video tag if recycleVideo option is set', function() {
+      utils.DomRecycler.configure({ recycleVideo: true })
       const video1 = utils.DomRecycler.create('video')
       utils.DomRecycler.garbage(video1)
       const video2 = utils.DomRecycler.create('video')
       expect(video1[0]).to.be.equal(video2[0])
+    })
+  })
+
+  describe('DoubleEventHandler', function() {
+    it('handle double event', function() {
+      const delay = 500
+      const handler = new utils.DoubleEventHandler(delay)
+      const spy = sinon.spy()
+      const evt = new Event('touchend')
+
+      handler.handle(evt, spy)
+      expect(spy).to.not.have.been.called
+      setTimeout(() => {
+        handler.handle(evt, spy)
+        expect(spy).to.have.been.calledOnce
+      }, delay/2)
     })
   })
 })

@@ -1,7 +1,10 @@
-import {extend} from './utils'
+import { extend } from './utils'
 import UIObject from './ui_object'
+import ErrorMixin from './error_mixin'
 
 export default class UICorePlugin extends UIObject {
+  get playerError() { return this.core.playerError }
+
   constructor(core) {
     super(core.options)
     this.core = core
@@ -28,14 +31,12 @@ export default class UICorePlugin extends UIObject {
     this.enabled = false
   }
 
-  destroy() {
-    this.remove()
-  }
-
   render() {
     return this
   }
 }
+
+Object.assign(UICorePlugin.prototype, ErrorMixin)
 
 UICorePlugin.extend = function(properties) {
   return extend(UICorePlugin, properties)

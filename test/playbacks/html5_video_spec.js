@@ -5,7 +5,7 @@ import $ from 'clappr-zepto'
 
 describe('HTML5Video playback', function() {
   beforeEach(function() {
-    this.options = {src: 'http://example.com/dash.ogg'}
+    this.options = { src: 'http://example.com/dash.ogg' }
   })
 
   it('checks if it can play a resource', function() {
@@ -39,35 +39,85 @@ describe('HTML5Video playback', function() {
   })
 
   it('triggers PLAYBACK_PLAY_INTENT on play request', function() {
-    let thereWasPlayIntent = false
+    const callback = sinon.spy()
     const playback = new HTML5Video(this.options)
 
-    playback.on(Events.PLAYBACK_PLAY_INTENT, function() {
-      thereWasPlayIntent = true
-    })
-
+    playback.on(Events.PLAYBACK_PLAY_INTENT, callback)
     playback.play()
 
-    expect(thereWasPlayIntent).to.be.true
+    callback.should.have.been.calledOnce
   })
 
-  it('isPlaying() is true after constructor when autoPlay is true', function(done) {
-    const playback = new HTML5Video({src: 'http://example.com/dash.ogg', autoPlay: true})
-    process.nextTick(function(){
-      expect(playback.isPlaying()).to.be.true
+  it('trigger PLAYBACK_SEEK on media seeking event', function(done) {
+    this.timeout(5000)
+    const callback = sinon.spy()
+    const playback = new HTML5Video({ src: '/test/fixtures/SampleVideo_360x240_1mb.mp4' })
+
+    playback.on(Events.PLAYBACK_SEEK, callback)
+    playback.on(Events.PLAYBACK_SEEK, () => {
+      callback.should.have.been.calledOnce
+      done()
+    }, this)
+
+    playback.el.dispatchEvent(new Event('seeking'))
+  })
+
+  it('triggers PLAYBACK_SEEKED on media seeked event', function(done) {
+    this.timeout(5000)
+    const callback = sinon.spy()
+    const playback = new HTML5Video({ src: '/test/fixtures/SampleVideo_360x240_1mb.mp4' })
+
+    playback.on(Events.PLAYBACK_SEEKED, callback)
+    playback.on(Events.PLAYBACK_SEEKED, () => {
+      callback.should.have.been.calledOnce
+      done()
+    }, this)
+
+    playback.el.dispatchEvent(new Event('seeked'))
+  })
+
+  it('can check autoplay availability', function(done) {
+    this.timeout(5000)
+    // FIXME: find a way to set disableCanAutoPlay to true only if Travis run
+    const playback = new HTML5Video({ src: 'http://example.com/dash.ogg', mute: true, disableCanAutoPlay: true })
+
+    playback.canAutoPlay(function(result, error) {
+      expect(result).to.be.true
+      expect(error).to.be.null
       done()
     })
   })
 
+  it('can be consented', function() {
+    const playback = new HTML5Video({ src: 'http://example.com/dash.ogg', mute: true })
+
+    expect(playback.consented).to.be.false
+    playback.consent()
+    expect(playback.consented).to.be.true
+  })
+
+  it('isPlaying() is true after constructor when autoPlay is true', function(done) {
+    this.timeout(5000)
+    const playback = new HTML5Video({ src: 'http://example.com/dash.ogg', autoPlay: true, mute: true, disableCanAutoPlay: true })
+
+    playback.on(Events.PLAYBACK_PLAY_INTENT, function() {
+      process.nextTick(function() {
+        expect(playback.isPlaying()).to.be.true
+        done()
+      })
+    })
+  })
+
   it('setup crossorigin attribute', function() {
-    const options = $.extend({playback: {crossOrigin: 'use-credentials'}}, this.options)
+    const options = $.extend({ playback: { crossOrigin: 'use-credentials' } }, this.options)
     const playback = new HTML5Video(options)
 
     expect(playback.el.crossOrigin).to.be.equal('use-credentials')
+    expect(playback.el.getAttribute('crossorigin')).equal('use-credentials')
   })
 
   it('enables inline playback for webviews when playInline flag is set', function() {
-    const options = $.extend({playback: {playInline: true}}, this.options)
+    const options = $.extend({ playback: { playInline: true } }, this.options)
     const playback = new HTML5Video(options)
 
     expect(playback.el['x-webkit-playsinline']).to.be.true
@@ -75,63 +125,156 @@ describe('HTML5Video playback', function() {
   })
 
   it('allows displaying default video tag controls', function() {
-    const options = $.extend({playback: {controls: 'controls'}}, this.options)
+    const options = $.extend({ playback: { controls: 'controls' } }, this.options)
     const playback = new HTML5Video(options)
     expect(playback.el.controls).to.be.true
+  })
+
+  it('mute or unmute video element when volume is changed', function() {
+    const playback = new HTML5Video(this.options)
+
+    expect(playback.el.getAttribute('muted')).to.be.null
+    expect(playback.el.muted).to.be.false
+
+    playback.volume(0)
+    expect(playback.el.getAttribute('muted')).equal('true')
+    expect(playback.el.muted).to.be.true
+
+    playback.volume(0.5)
+    expect(playback.el.getAttribute('muted')).to.be.null
+    expect(playback.el.muted).to.be.false
+  })
+
+  it('setup external tracks', function() {
+    let newTrackUrl = () => { URL.createObjectURL(new Blob([], { type: 'text/vtt' })) }
+    const options = $.extend({ playback: {
+      externalTracks: [
+        { lang: 'en', label: 'English', src: newTrackUrl(), kind: 'subtitles' },
+        { lang: 'fr', label: 'French', src: newTrackUrl() }
+      ]
+    } }, this.options)
+    const playback = new HTML5Video(options)
+    playback.render()
+    const $tracks = playback.$el.find('track[data-html5-video-track]')
+
+    expect($tracks[0].getAttribute('data-html5-video-track')).to.be.equal('0')
+    expect($tracks[0].getAttribute('kind')).to.be.equal('subtitles')
+    expect($tracks[0].getAttribute('label')).to.be.equal('English')
+    expect($tracks[0].getAttribute('srclang')).to.be.equal('en')
+
+    expect($tracks[1].getAttribute('data-html5-video-track')).to.be.equal('1')
+    expect($tracks[1].getAttribute('kind')).to.be.equal('subtitles')
+    expect($tracks[1].getAttribute('label')).to.be.equal('French')
+    expect($tracks[1].getAttribute('srclang')).to.be.equal('fr')
+  })
+
+  it('can switch text tracks', function() {
+    let newTrackUrl = () => { URL.createObjectURL(new Blob([], { type: 'text/vtt' })) }
+    const options = $.extend({ playback: {
+      externalTracks: [
+        { lang: 'en', label: 'English', src: newTrackUrl(), kind: 'subtitles' },
+        { lang: 'fr', label: 'French', src: newTrackUrl() }
+      ]
+    } }, this.options)
+    const playback = new HTML5Video(options)
+    playback.render()
+
+    expect(playback.hasClosedCaptionsTracks).to.be.true
+    expect(playback.closedCaptionsTracks.length).equal(2)
+    expect(playback.closedCaptionsTrackId).equal(-1)
+    expect(playback.closedCaptionsTracks[0].track.mode).to.not.equal('showing')
+    expect(playback.closedCaptionsTracks[1].track.mode).to.not.equal('showing')
+
+    playback.closedCaptionsTrackId = 0
+    expect(playback.closedCaptionsTrackId).equal(0)
+    expect(playback.closedCaptionsTracks[0].track.mode).equal('showing')
+    expect(playback.closedCaptionsTracks[1].track.mode).to.not.equal('showing')
+
+    playback.closedCaptionsTrackId = 1
+    expect(playback.closedCaptionsTrackId).equal(1)
+    expect(playback.closedCaptionsTracks[0].track.mode).to.not.equal('showing')
+    expect(playback.closedCaptionsTracks[1].track.mode).equal('showing')
+
+    playback.closedCaptionsTrackId = -1
+    expect(playback.closedCaptionsTrackId).equal(-1)
+    expect(playback.closedCaptionsTracks[0].track.mode).to.not.equal('showing')
+    expect(playback.closedCaptionsTracks[1].track.mode).to.not.equal('showing')
   })
 
   describe('progress', function() {
     let start, end, currentTime
     const duration = 300
+    const fakeEl = {
+      get currentTime() { return currentTime },
+      get duration() { return duration },
+      get buffered() { return { start: (i) => start[i], end: (i) => end[i], get length() { return start.length } } }
+    }
+
     beforeEach(function() {
-      this.playback = new HTML5Video(this.options)
       currentTime = 0
       start = [0]
       end = [30]
-      const fakeEl = {
-        get currentTime() { return currentTime },
-        get duration() { return duration },
-        get buffered() { return {start: (i) => start[i], end: (i) => end[i], get length() { return start.length }} }
-      }
+
+      this.callback = sinon.spy()
+      this.playback = new HTML5Video(this.options)
       this.playback.setElement(fakeEl)
+      this.playback.on(Events.PLAYBACK_PROGRESS, this.callback)
     })
 
     it('should trigger PLAYBACK_PROGRESS with current buffer position', function() {
-      let progress
-      this.playback.on(Events.PLAYBACK_PROGRESS, function(currentProgress) {
-        progress = currentProgress
-      })
       this.playback._onProgress() // cannot trigger event on fake element (improve later?)
-      expect(progress.start).to.be.equal(start[0])
-      expect(progress.current).to.be.equal(end[0])
-      expect(progress.total).to.be.equal(duration)
+      let currentProgess = this.callback.getCall(0).args[0]
+
+      expect(currentProgess.start).to.be.equal(start[0])
+      expect(currentProgess.current).to.be.equal(end[0])
+      expect(currentProgess.total).to.be.equal(duration)
     })
 
     it('should find current buffer position', function() {
       start = [0, 50, 180]
       end = [30, 90, 280]
       currentTime = 75 // this should be located at index 1
-      let progress
-      this.playback.on(Events.PLAYBACK_PROGRESS, function(currentProgress) {
-        progress = currentProgress
-      })
+
       this.playback._onProgress() // cannot trigger event on fake element (improve later?)
+      let progress = this.callback.getCall(0).args[0]
+
       expect(progress.start).to.be.equal(start[1])
       expect(progress.current).to.be.equal(end[1])
+    })
+
+    it('does not trigger buffer event when the playback is initialized', function() {
+      /*
+        Only trigger buffer events when buffer state change.
+        The default value for _bufferState is false.
+      */
+
+      let builtInEvents = ['loadedmetadata', 'progress', 'timeupdate'].map(
+        function(label) {
+          return new Event(label)
+        }
+      )
+
+      let callback = sinon.spy()
+      let playback = new HTML5Video(this.options)
+
+      playback.on(Events.PLAYBACK_BUFFERING, callback)
+      playback.on(Events.PLAYBACK_BUFFERFULL, callback)
+
+      builtInEvents.map(function(event) { playback.el.dispatchEvent(event) })
+      callback.should.not.have.been.called
     })
 
     it('should return an array of buffer segments as {start, end} objects', function() {
       start = [0, 50, 180]
       end = [30, 90, 280]
-      let buffered
-      this.playback.on(Events.PLAYBACK_PROGRESS, function(currentProgress, bufferedSegments) {
-        buffered = bufferedSegments
-      })
+
       this.playback._onProgress() // cannot trigger event on fake element (improve later?)
+      let buffered = this.callback.getCall(0).args[1]
+
       expect(buffered.length).to.be.equal(start.length)
-      expect(buffered[0]).to.deep.equal({start: start[0], end: end[0]})
-      expect(buffered[1]).to.deep.equal({start: start[1], end: end[1]})
-      expect(buffered[2]).to.deep.equal({start: start[2], end: end[2]})
+      expect(buffered[0]).to.deep.equal({ start: start[0], end: end[0] })
+      expect(buffered[1]).to.deep.equal({ start: start[1], end: end[1] })
+      expect(buffered[2]).to.deep.equal({ start: start[2], end: end[2] })
     })
   })
 

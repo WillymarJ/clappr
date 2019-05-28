@@ -2,31 +2,30 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import Log from 'plugins/log'
-import {uniqueId} from './utils'
-import execOnce from 'lodash.once'
+import Log from '../plugins/log'
+import { uniqueId } from './utils'
 
 const slice = Array.prototype.slice
 
 const eventSplitter = /\s+/
 
 const eventsApi = function(obj, action, name, rest) {
-  if (!name) {return true}
+  if (!name) return true
 
   // Handle event maps.
   if (typeof name === 'object') {
-    for (const key in name) {
+    for (const key in name)
       obj[action].apply(obj, [key, name[key]].concat(rest))
-    }
+
     return false
   }
 
   // Handle space separated event names.
   if (eventSplitter.test(name)) {
     const names = name.split(eventSplitter)
-    for (let i = 0, l = names.length; i < l; i++) {
+    for (let i = 0, l = names.length; i < l; i++)
       obj[action].apply(obj, [names[i]].concat(rest))
-    }
+
     return false
   }
 
@@ -41,6 +40,7 @@ const triggerEvents = function(events, args, klass, name) {
   function run() {
     try {
       switch (args.length) {
+      /* eslint-disable curly */
       case 0: while (++i < l) { (ev = events[i]).callback.call(ev.ctx) } return
       case 1: while (++i < l) { (ev = events[i]).callback.call(ev.ctx, a1) } return
       case 2: while (++i < l) { (ev = events[i]).callback.call(ev.ctx, a1, a2) } return
@@ -68,10 +68,10 @@ export default class Events {
    * @param {Object} context
    */
   on(name, callback, context) {
-    if (!eventsApi(this, 'on', name, [callback, context]) || !callback) {return this}
+    if (!eventsApi(this, 'on', name, [callback, context]) || !callback) return this
     this._events || (this._events = {})
     const events = this._events[name] || (this._events[name] = [])
-    events.push({callback: callback, context: context, ctx: context || this})
+    events.push({ callback: callback, context: context, ctx: context || this })
     return this
   }
 
@@ -83,13 +83,13 @@ export default class Events {
    * @param {Object} context
    */
   once(name, callback, context) {
-    if (!eventsApi(this, 'once', name, [callback, context]) || !callback) {return this}
-    const self = this
-    const once = execOnce(function() {
-      self.off(name, once)
+    let once
+    if (!eventsApi(this, 'once', name, [callback, context]) || !callback) return this
+    const off = () => this.off(name, once)
+    once = function() {
+      off(name, once)
       callback.apply(this, arguments)
-    })
-    once._callback = callback
+    }
     return this.on(name, once, context)
   }
 
@@ -102,7 +102,7 @@ export default class Events {
    */
   off(name, callback, context) {
     let retain, ev, events, names, i, l, j, k
-    if (!this._events || !eventsApi(this, 'off', name, [callback, context])) {return this}
+    if (!this._events || !eventsApi(this, 'off', name, [callback, context])) return this
     if (!name && !callback && !context) {
       this._events = void 0
       return this
@@ -118,12 +118,12 @@ export default class Events {
           for (j = 0, k = events.length; j < k; j++) {
             ev = events[j]
             if ((callback && callback !== ev.callback && callback !== ev.callback._callback) ||
-                (context && context !== ev.context)) {
+                (context && context !== ev.context))
               retain.push(ev)
-            }
+
           }
         }
-        if (!retain.length) {delete this._events[name]}
+        if (!retain.length) delete this._events[name]
       }
     }
     return this
@@ -137,13 +137,13 @@ export default class Events {
   trigger(name) {
     const klass = this.name || this.constructor.name
     Log.debug.apply(Log, [klass].concat(Array.prototype.slice.call(arguments)))
-    if (!this._events) {return this}
+    if (!this._events) return this
     const args = slice.call(arguments, 1)
-    if (!eventsApi(this, 'trigger', name, args)) {return this}
+    if (!eventsApi(this, 'trigger', name, args)) return this
     const events = this._events[name]
     const allEvents = this._events.all
-    if (events) {triggerEvents(events, args, klass, name)}
-    if (allEvents) {triggerEvents(allEvents, arguments, klass, name)}
+    if (events) triggerEvents(events, args, klass, name)
+    if (allEvents) triggerEvents(allEvents, arguments, klass, name)
     return this
   }
 
@@ -156,19 +156,36 @@ export default class Events {
    */
   stopListening(obj, name, callback) {
     let listeningTo = this._listeningTo
-    if (!listeningTo) {return this}
+    if (!listeningTo) return this
     const remove = !name && !callback
-    if (!callback && typeof name === 'object') {callback = this}
-    if (obj) {(listeningTo = {})[obj._listenId] = obj}
+    if (!callback && typeof name === 'object') callback = this
+    if (obj) (listeningTo = {})[obj._listenId] = obj
     for (const id in listeningTo) {
       obj = listeningTo[id]
       obj.off(name, callback, this)
-      if (remove || Object.keys(obj._events).length === 0) {delete this._listeningTo[id]}
+      if (remove || Object.keys(obj._events).length === 0) delete this._listeningTo[id]
     }
     return this
   }
-}
 
+  static register(eventName) {
+    Events.Custom || (Events.Custom = {})
+    let property = typeof eventName === 'string' && eventName.toUpperCase().trim()
+
+    if (property && !Events.Custom[property]) {
+      Events.Custom[property] = property.toLowerCase().split('_').map(
+        (value, index) => index === 0 ? value : value = (value[0].toUpperCase() + value.slice(1))
+      ).join('')
+    } else
+      Log.error('Events', 'Error when register event: ' + eventName)
+
+  }
+
+  static listAvailableCustomEvents() {
+    Events.Custom || (Events.Custom = {})
+    return Object.keys(Events.Custom).filter((property) => typeof Events.Custom[property] === 'string')
+  }
+}
 
 /**
  * listen to an event indefinitely for a given `obj`
@@ -194,14 +211,14 @@ export default class Events {
  * this.listenToOnce(this.core.playback, Events.PLAYBACK_PAUSE, this.callback)
  * ```
  */
-const listenMethods = {listenTo: 'on', listenToOnce: 'once'}
+const listenMethods = { listenTo: 'on', listenToOnce: 'once' }
 
 Object.keys(listenMethods).forEach(function(method) {
   Events.prototype[method] = function(obj, name, callback) {
     const listeningTo = this._listeningTo || (this._listeningTo = {})
     const id = obj._listenId || (obj._listenId = uniqueId('l'))
     listeningTo[id] = obj
-    if (!callback && typeof name === 'object') {callback = this}
+    if (!callback && typeof name === 'object') callback = this
     obj[listenMethods[method]](name, callback, this)
     return this
   }
@@ -265,7 +282,27 @@ Events.PLAYER_SEEK = 'seek'
  * @event PLAYER_ERROR
  * @param {Object} error the error
  */
-Events.PLAYER_ERROR = 'error'
+Events.PLAYER_ERROR = 'playererror'
+/**
+ * Fired when there is an error
+ *
+ * @event ERROR
+ * @param {Object} error
+ * the error with the following format `{code, description, level, raw, origin, scope}`
+ * @param {String} [options.code]
+ * error's code: code to identify error in the following format: origin:code
+ * @param {String} [options.description]
+ * error's description: description of the error
+ * @param {String} [options.level]
+ * error's level: FATAL or WARN.
+ * @param {String} [options.origin]
+ * error's origin. Example: hls, html5, etc
+ * @param {String} [options.scope]
+ * error's scope. Example: playback, container, etc
+ * @param {String} [options.raw]
+ * raw error: the initial error received
+ */
+Events.ERROR = 'error'
 /**
  * Fired when the time is updated on player
  *
@@ -273,9 +310,9 @@ Events.PLAYER_ERROR = 'error'
  * @param {Object} progress Data
  * progress object
  * @param {Number} [progress.current]
- * current time
+ * current time (in seconds)
  * @param {Number} [progress.total]
- * total time
+ * total time (in seconds)
  */
 Events.PLAYER_TIMEUPDATE = 'timeupdate'
 /**
@@ -285,6 +322,13 @@ Events.PLAYER_TIMEUPDATE = 'timeupdate'
  * @param {Number} volume the current volume
  */
 Events.PLAYER_VOLUMEUPDATE = 'volumeupdate'
+
+/**
+ * Fired when subtitle is available
+ *
+ * @event PLAYER_SUBTITLE_AVAILABLE
+ */
+Events.PLAYER_SUBTITLE_AVAILABLE = 'subtitleavailable'
 
 // Playback Events
 /**
@@ -310,9 +354,9 @@ Events.PLAYBACK_PROGRESS = 'playback:progress'
  * @param {Object} progress Data
  * progress object
  * @param {Number} [progress.current]
- * current time
+ * current time (in seconds)
  * @param {Number} [progress.total]
- * total time
+ * total time (in seconds)
  */
 Events.PLAYBACK_TIMEUPDATE = 'playback:timeupdate'
 /**
@@ -460,6 +504,18 @@ Events.PLAYBACK_PLAY = 'playback:play'
  */
 Events.PLAYBACK_PAUSE = 'playback:pause'
 /**
+ * Fired when the media for a playback is seeking.
+ *
+ * @event PLAYBACK_SEEK
+ */
+Events.PLAYBACK_SEEK = 'playback:seek'
+/**
+ * Fired when the media for a playback is seeked.
+ *
+ * @event PLAYBACK_SEEKED
+ */
+Events.PLAYBACK_SEEKED = 'playback:seeked'
+/**
  * Fired when the media for a playback is stopped.
  *
  * @event PLAYBACK_STOP
@@ -479,7 +535,36 @@ Events.PLAYBACK_STATS_ADD = 'playback:stats:add'
 Events.PLAYBACK_FRAGMENT_LOADED = 'playback:fragment:loaded'
 // TODO doc
 Events.PLAYBACK_LEVEL_SWITCH = 'playback:level:switch'
+/**
+ * Fired when subtitle is available on playback for display
+ *
+ * @event PLAYBACK_SUBTITLE_AVAILABLE
+ */
+Events.PLAYBACK_SUBTITLE_AVAILABLE = 'playback:subtitle:available'
+/**
+ * Fired when playback subtitle track has changed
+ *
+ * @event CONTAINER_SUBTITLE_CHANGED
+ * @param {Object} track Data
+ * track object
+ * @param {Number} [track.id]
+ * selected track id
+ */
+Events.PLAYBACK_SUBTITLE_CHANGED = 'playback:subtitle:changed'
 
+// Core Events
+/**
+ * Fired when the containers are created
+ *
+ * @event CORE_CONTAINERS_CREATED
+ */
+Events.CORE_CONTAINERS_CREATED = 'core:containers:created'
+/**
+ * Fired when the active container changed
+ *
+ * @event CORE_ACTIVE_CONTAINER_CHANGED
+ */
+Events.CORE_ACTIVE_CONTAINER_CHANGED = 'core:active:container:changed'
 /**
  * Fired when the options were changed for the core
  *
@@ -495,10 +580,44 @@ Events.CORE_READY = 'core:ready'
 /**
  * Fired when the fullscreen state change
  *
+ * @event CORE_FULLSCREEN
  * @param {Boolean} whether or not the player is on fullscreen mode
- * @event CORE_READY
  */
 Events.CORE_FULLSCREEN = 'core:fullscreen'
+/**
+ * Fired when core updates size
+ *
+ * @event CORE_RESIZE
+ * @param {Object} currentSize an object with the current size
+ */
+Events.CORE_RESIZE = 'core:resize'
+/**
+ * Fired when the screen orientation has changed.
+ * This event is trigger only for mobile devices.
+ *
+ * @event CORE_SCREEN_ORIENTATION_CHANGED
+ * @param {Object} screen An object with screen orientation
+ * screen object
+ * @param {Object} [screen.event]
+ * window resize event object
+ * @param {String} [screen.orientation]
+ * screen orientation (ie: 'landscape' or 'portrait')
+ */
+Events.CORE_SCREEN_ORIENTATION_CHANGED = 'core:screen:orientation:changed'
+/**
+ * Fired when occurs mouse move event on core element
+ *
+ * @event CORE_MOUSE_MOVE
+ * @param {Object} event a DOM event
+ */
+Events.CORE_MOUSE_MOVE = 'core:mousemove'
+/**
+ * Fired when occurs mouse leave event on core element
+ *
+ * @event CORE_MOUSE_LEAVE
+ * @param {Object} event a DOM event
+ */
+Events.CORE_MOUSE_LEAVE = 'core:mouseleave'
 
 // Container Events
 /**
@@ -549,6 +668,24 @@ Events.CONTAINER_ERROR = 'container:error'
  * extra meta data
  */
 Events.CONTAINER_LOADEDMETADATA = 'container:loadedmetadata'
+
+/**
+ * Fired when subtitle is available on container for display
+ *
+ * @event CONTAINER_SUBTITLE_AVAILABLE
+ */
+Events.CONTAINER_SUBTITLE_AVAILABLE = 'container:subtitle:available'
+/**
+ * Fired when subtitle track has changed
+ *
+ * @event CONTAINER_SUBTITLE_CHANGED
+ * @param {Object} track Data
+ * track object
+ * @param {Number} [track.id]
+ * selected track id
+ */
+Events.CONTAINER_SUBTITLE_CHANGED = 'container:subtitle:changed'
+
 /**
  * Fired when the time is updated on container
  *
@@ -556,9 +693,9 @@ Events.CONTAINER_LOADEDMETADATA = 'container:loadedmetadata'
  * @param {Object} progress Data
  * progress object
  * @param {Number} [progress.current]
- * current time
+ * current time (in seconds)
  * @param {Number} [progress.total]
- * total time
+ * total time (in seconds)
  */
 Events.CONTAINER_TIMEUPDATE = 'container:timeupdate'
 /**
@@ -591,6 +728,13 @@ Events.CONTAINER_MOUSE_LEAVE = 'container:mouseleave'
  * @param {Number} time the current time in seconds
  */
 Events.CONTAINER_SEEK = 'container:seek'
+/**
+ * Fired when the container was finished the seek video
+ *
+ * @event CONTAINER_SEEKED
+ * @param {Number} time the current time in seconds
+ */
+Events.CONTAINER_SEEKED = 'container:seeked'
 Events.CONTAINER_VOLUME = 'container:volume'
 Events.CONTAINER_FULLSCREEN = 'container:fullscreen'
 /**
@@ -697,6 +841,9 @@ Events.MEDIACONTROL_NOTPLAYING = 'mediacontrol:notplaying'
  * @event MEDIACONTROL_CONTAINERCHANGED
  */
 Events.MEDIACONTROL_CONTAINERCHANGED = 'mediacontrol:containerchanged'
-
-// Core Events
-Events.CORE_CONTAINERS_CREATED = 'core:containers:created'
+/**
+ * Fired when the options were changed for the mediacontrol
+ *
+ * @event MEDIACONTROL_OPTIONS_CHANGE
+ */
+Events.MEDIACONTROL_OPTIONS_CHANGE = 'mediacontrol:options:change'

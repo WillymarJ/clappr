@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import ContainerPlugin from 'base/container_plugin'
-import Events from 'base/events'
+import ContainerPlugin from '../../base/container_plugin'
+import Events from '../../base/events'
 
 export default class GoogleAnalytics extends ContainerPlugin {
   get name() { return 'google_analytics' }
@@ -26,9 +26,8 @@ export default class GoogleAnalytics extends ContainerPlugin {
       script.setAttribute('src', '//www.google-analytics.com/ga.js')
       script.onload = () => this.addEventListeners()
       document.body.appendChild(script)
-    } else {
-      this.addEventListeners()
-    }
+    } else { this.addEventListeners() }
+
   }
 
   addEventListeners() {
@@ -53,7 +52,7 @@ export default class GoogleAnalytics extends ContainerPlugin {
       _gaq.push([this.trackerName + '_setDomainName', this.domainName])
   }
 
-  onReady(){
+  onReady() {
     this.push(['Video', 'Playback', this.container.playback.name])
   }
 
@@ -90,9 +89,9 @@ export default class GoogleAnalytics extends ContainerPlugin {
   }
 
   onPlaybackChanged(playbackState) {
-    if (playbackState.type !== null) {
+    if (playbackState.type !== null)
       this.push(['Video', 'Playback Type - ' + playbackState.type, this.container.playback.src])
-    }
+
   }
 
   onDVR(dvrInUse) {

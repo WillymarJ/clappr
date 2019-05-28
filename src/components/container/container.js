@@ -6,10 +6,13 @@
  * Container is responsible for the video rendering and state
  */
 
-import Events from 'base/events'
-import UIObject from 'base/ui_object'
-import Styler from 'base/styler'
-import style from './public/style.scss'
+import Events from '../../base/events'
+import UIObject from '../../base/ui_object'
+import ErrorMixin from '../../base/error_mixin'
+import { DoubleEventHandler } from '../../base/utils'
+
+import './public/style.scss'
+
 import $ from 'clappr-zepto'
 
 /**
@@ -33,7 +36,7 @@ export default class Container extends UIObject {
     return {
       'click': 'clicked',
       'dblclick': 'dblClicked',
-      'doubleTap': 'dblClicked',
+      'touchend': 'dblTap',
       'contextmenu': 'onContextMenu',
       'mouseenter': 'mouseEnter',
       'mouseleave': 'mouseLeave'
@@ -70,21 +73,61 @@ export default class Container extends UIObject {
   }
 
   /**
+   * checks if has closed caption tracks.
+   * @property hasClosedCaptionsTracks
+   * @type {Boolean}
+   */
+  get hasClosedCaptionsTracks() {
+    return this.playback.hasClosedCaptionsTracks
+  }
+
+  /**
+   * gets the available closed caption tracks.
+   * @property closedCaptionsTracks
+   * @type {Array} an array of objects with at least 'id' and 'name' properties
+   */
+  get closedCaptionsTracks() {
+    return this.playback.closedCaptionsTracks
+  }
+
+  /**
+   * gets the selected closed caption track index. (-1 is disabled)
+   * @property closedCaptionsTrackId
+   * @type {Number}
+   */
+  get closedCaptionsTrackId() {
+    return this.playback.closedCaptionsTrackId
+  }
+
+  /**
+   * sets the selected closed caption track index. (-1 is disabled)
+   * @property closedCaptionsTrackId
+   * @type {Number}
+   */
+  set closedCaptionsTrackId(trackId) {
+    this.playback.closedCaptionsTrackId = trackId
+  }
+
+  /**
    * it builds a container
    * @method constructor
    * @param {Object} options the options object
    * @param {Strings} i18n the internationalization component
    */
-  constructor(options, i18n) {
+  constructor(options, i18n, playerError) {
     super(options)
     this._i18n = i18n
     this.currentTime = 0
     this.volume = 100
     this.playback = options.playback
+    this.playerError = playerError
     this.settings = $.extend({}, this.playback.settings)
     this.isReady = false
     this.mediaControlDisabled = false
     this.plugins = [this.playback]
+    this.dblTapHandler = new DoubleEventHandler(500)
+    this.clickTimer = null
+    this.clickDelay = 200  // FIXME: could be a player option
     this.bindEvents()
   }
 
@@ -130,11 +173,22 @@ export default class Container extends UIObject {
     this.listenTo(this.playback, Events.PLAYBACK_DVR, this.playbackDvrStateChanged)
     this.listenTo(this.playback, Events.PLAYBACK_MEDIACONTROL_DISABLE, this.disableMediaControl)
     this.listenTo(this.playback, Events.PLAYBACK_MEDIACONTROL_ENABLE, this.enableMediaControl)
+    this.listenTo(this.playback, Events.PLAYBACK_SEEKED, this.onSeeked)
     this.listenTo(this.playback, Events.PLAYBACK_ENDED, this.onEnded)
     this.listenTo(this.playback, Events.PLAYBACK_PLAY, this.playing)
     this.listenTo(this.playback, Events.PLAYBACK_PAUSE, this.paused)
     this.listenTo(this.playback, Events.PLAYBACK_STOP, this.stopped)
     this.listenTo(this.playback, Events.PLAYBACK_ERROR, this.error)
+    this.listenTo(this.playback, Events.PLAYBACK_SUBTITLE_AVAILABLE, this.subtitleAvailable)
+    this.listenTo(this.playback, Events.PLAYBACK_SUBTITLE_CHANGED, this.subtitleChanged)
+  }
+
+  subtitleAvailable() {
+    this.trigger(Events.CONTAINER_SUBTITLE_AVAILABLE)
+  }
+
+  subtitleChanged(track) {
+    this.trigger(Events.CONTAINER_SUBTITLE_CHANGED, track)
   }
 
   playbackStateChanged(state) {
@@ -217,11 +271,11 @@ export default class Container extends UIObject {
     return this.playback.getDuration()
   }
 
-  error(errorObj) {
-    if (!this.isReady) {
+  error(error) {
+    if (!this.isReady)
       this.ready()
-    }
-    this.trigger(Events.CONTAINER_ERROR, {error: errorObj, container: this}, this.name)
+
+    this.trigger(Events.CONTAINER_ERROR, error, this.name)
   }
 
   loadedMetadata(metadata) {
@@ -281,25 +335,48 @@ export default class Container extends UIObject {
 
   clicked() {
     if (!this.options.chromeless || this.options.allowUserInteraction) {
-      this.trigger(Events.CONTAINER_CLICK, this, this.name)
+      // The event is delayed because it can be canceled by a double-click event
+      // An example of use is to prevent playback from pausing when switching to full screen
+      this.clickTimer = setTimeout(() => {
+        this.clickTimer && this.trigger(Events.CONTAINER_CLICK, this, this.name)
+      }, this.clickDelay)
     }
+  }
+
+  cancelClicked() {
+    clearTimeout(this.clickTimer)
+    this.clickTimer = null
   }
 
   dblClicked() {
     if (!this.options.chromeless || this.options.allowUserInteraction) {
+      this.cancelClicked()
       this.trigger(Events.CONTAINER_DBLCLICK, this, this.name)
     }
   }
 
-  onContextMenu(event) {
+  dblTap(evt) {
     if (!this.options.chromeless || this.options.allowUserInteraction) {
-      this.trigger(Events.CONTAINER_CONTEXTMENU, event, this.name)
+      this.dblTapHandler.handle(evt, () => {
+        this.cancelClicked()
+        this.trigger(Events.CONTAINER_DBLCLICK, this, this.name)
+      })
     }
+  }
+
+  onContextMenu(event) {
+    if (!this.options.chromeless || this.options.allowUserInteraction)
+      this.trigger(Events.CONTAINER_CONTEXTMENU, event, this.name)
+
   }
 
   seek(time) {
     this.trigger(Events.CONTAINER_SEEK, time, this.name)
     this.playback.seek(time)
+  }
+
+  onSeeked() {
+    this.trigger(Events.CONTAINER_SEEKED, this.name)
   }
 
   seekPercentage(percentage) {
@@ -357,15 +434,15 @@ export default class Container extends UIObject {
   }
 
   mouseEnter() {
-    if (!this.options.chromeless || this.options.allowUserInteraction) {
+    if (!this.options.chromeless || this.options.allowUserInteraction)
       this.trigger(Events.CONTAINER_MOUSE_ENTER)
-    }
+
   }
 
   mouseLeave() {
-    if (!this.options.chromeless || this.options.allowUserInteraction) {
+    if (!this.options.chromeless || this.options.allowUserInteraction)
       this.trigger(Events.CONTAINER_MOUSE_LEAVE)
-    }
+
   }
 
   settingsUpdate() {
@@ -396,11 +473,11 @@ export default class Container extends UIObject {
   }
 
   updateStyle() {
-    if (!this.options.chromeless || this.options.allowUserInteraction) {
+    if (!this.options.chromeless || this.options.allowUserInteraction)
       this.$el.removeClass('chromeless')
-    } else {
+    else
       this.$el.addClass('chromeless')
-    }
+
   }
 
   /**
@@ -411,14 +488,15 @@ export default class Container extends UIObject {
   configure(options) {
     this._options = $.extend(this._options, options)
     this.updateStyle()
+    this.playback.configure(this.options)
     this.trigger(Events.CONTAINER_OPTIONS_CHANGE)
   }
 
   render() {
-    const s = Styler.getStyleFor(style)
-    this.$el.append(s)
     this.$el.append(this.playback.render().el)
     this.updateStyle()
     return this
   }
 }
+
+Object.assign(Container.prototype, ErrorMixin)

@@ -1,5 +1,8 @@
-import {extend} from './utils'
+import { extend } from './utils'
 import UIObject from './ui_object'
+import ErrorMixin from './error_mixin'
+
+import $ from 'clappr-zepto'
 
 /**
  * An abstraction to represent a generic playback, it's like an interface to be implemented by subclasses.
@@ -15,6 +18,10 @@ export default class Playback extends UIObject {
   * @type Boolean
   */
   get isAudioOnly() {
+    return false
+  }
+
+  get isAdaptive() {
     return false
   }
 
@@ -48,21 +55,34 @@ export default class Playback extends UIObject {
   }
 
   /**
+   * Determine if the playback has user consent.
+   * @property consented
+   * @type Boolean
+   */
+  get consented() {
+    return this._consented
+  }
+
+  /**
    * @method constructor
    * @param {Object} options the options object
    * @param {Strings} i18n the internationalization component
    */
-  constructor(options, i18n) {
+  constructor(options, i18n, playerError) {
     super(options)
     this.settings = {}
     this._i18n = i18n
+    this.playerError = playerError
+    this._consented = false
   }
 
   /**
    * Gives user consent to playback (mobile devices).
    * @method consent
    */
-  consent() {}
+  consent() {
+    this._consented = true
+  }
 
   /**
    * plays the playback.
@@ -95,7 +115,6 @@ export default class Playback extends UIObject {
    * @param {Number} time should be a number between 0 and 100
    */
   seekPercentage(percentage) {} // eslint-disable-line no-unused-vars
-
 
   /**
    * The time that "0" now represents relative to when playback started.
@@ -132,6 +151,40 @@ export default class Playback extends UIObject {
   }
 
   /**
+   * checks if the playback has closed caption tracks.
+   * @property hasClosedCaptionsTracks
+   * @type {Boolean}
+   */
+  get hasClosedCaptionsTracks() {
+    return this.closedCaptionsTracks.length > 0
+  }
+
+  /**
+   * gets the playback available closed caption tracks.
+   * @property closedCaptionsTracks
+   * @type {Array} an array of objects with at least 'id' and 'name' properties
+   */
+  get closedCaptionsTracks() {
+    return []
+  }
+
+  /**
+   * gets the selected closed caption track index. (-1 is disabled)
+   * @property closedCaptionsTrackId
+   * @type {Number}
+   */
+  get closedCaptionsTrackId() {
+    return -1
+  }
+
+  /**
+   * sets the selected closed caption track index. (-1 is disabled)
+   * @property closedCaptionsTrackId
+   * @type {Number}
+   */
+  set closedCaptionsTrackId(trackId) {} // eslint-disable-line no-unused-vars
+
+  /**
    * gets the playback type (`'vod', 'live', 'aod'`)
    * @method getPlaybackType
    * @return {String} you should write the playback type otherwise it'll assume `'no_op'`
@@ -164,13 +217,35 @@ export default class Playback extends UIObject {
   volume(value) {} // eslint-disable-line no-unused-vars
 
   /**
-   * destroys the playback, removing it from DOM
-   * @method destroy
+   * enables to configure the playback after its creation
+   * @method configure
+   * @param {Object} options all the options to change in form of a javascript object
    */
-  destroy() {
-    this.$el.remove()
+  configure(options) {
+    this._options = $.extend(this._options, options)
+  }
+
+  /**
+   * attempt to autoplays the playback.
+   * @method attemptAutoPlay
+   */
+  attemptAutoPlay() {
+    this.canAutoPlay((result, error) => { // eslint-disable-line no-unused-vars
+      result && this.play()
+    })
+  }
+
+  /**
+   * checks if the playback can autoplay.
+   * @method canAutoPlay
+   * @param {Function} callback function where first param is Boolean and second param is playback Error or null
+   */
+  canAutoPlay(cb) {
+    cb(true, null) // Assume playback can autoplay by default
   }
 }
+
+Object.assign(Playback.prototype, ErrorMixin)
 
 Playback.extend = function(properties) {
   return extend(Playback, properties)

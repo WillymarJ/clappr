@@ -1,43 +1,31 @@
-import {requestAnimationFrame, cancelAnimationFrame} from 'base/utils'
-import Playback from 'base/playback'
-import template from 'base/template'
-import Styler from 'base/styler'
-import Events from 'base/events'
-import noOpStyle from './public/style.scss'
+import { requestAnimationFrame, cancelAnimationFrame } from '../../base/utils'
+import Playback from '../../base/playback'
+import template from '../../base/template'
+import Events from '../../base/events'
 import noOpHTML from './public/error.html'
+import './public/style.scss'
 
 export default class NoOp extends Playback {
   get name() { return 'no_op' }
   get template() { return template(noOpHTML) }
   get attributes() {
-    return {'data-no-op': ''}
+    return { 'data-no-op': '' }
   }
 
   constructor(...args) {
     super(...args)
     this._noiseFrameNum = -1
-    this._started = false
   }
 
   render() {
-    const style = Styler.getStyleFor(noOpStyle)
     const playbackNotSupported = this.options.playbackNotSupportedMessage || this.i18n.t('playback_not_supported')
-    this.$el.html(this.template({message: playbackNotSupported}))
-    this.$el.append(style)
+    this.$el.html(this.template({ message: playbackNotSupported }))
     this.trigger(Events.PLAYBACK_READY, this.name)
     const showForNoOp = !!(this.options.poster && this.options.poster.showForNoOp)
-    if (this.options.autoPlay || !showForNoOp) {
-      this.play()
-    }
-    return this
-  }
-
-  play() {
-    if (!this._started) {
-      this._started = true
-      this.trigger(Events.PLAYBACK_PLAY)
+    if (this.options.autoPlay || !showForNoOp)
       this._animate()
-    }
+
+    return this
   }
 
   _noise() {
@@ -54,9 +42,9 @@ export default class NoOp extends Playback {
     } catch (err) {
       buffer32 = new Uint32Array(this.context.canvas.width * this.context.canvas.height * 4)
       const data=idata.data
-      for(let i = 0; i < data.length; i++){
+      for (let i = 0; i < data.length; i++)
         buffer32[i]=data[i]
-      }
+
     }
 
     const len = buffer32.length,
@@ -76,9 +64,9 @@ export default class NoOp extends Playback {
   }
 
   _loop() {
-    if (this._stop) {
+    if (this._stop)
       return
-    }
+
     this._noise()
     this._animationHandle = requestAnimationFrame(() => this._loop())
   }

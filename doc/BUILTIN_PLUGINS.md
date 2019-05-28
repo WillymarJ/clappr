@@ -18,6 +18,8 @@ You can specify where the player should be attached to using either the `parentI
 ##### Auto Play
 Add `autoPlay: true` if you want the video to automatically play after page load.
 
+By default, Clappr player will do its best to detect if the browser can play video automatically. If you want to disable this behaviour, add `disableCanAutoPlay: true` parameter.
+
 ##### Loop
 Add `loop: true` if you want the video to automatically replay after it ends.
 
@@ -35,13 +37,14 @@ var options = {
     'pt-BR': {
       'live': 'ao vivo',
       'back_to_live': 'voltar para o ao vivo',
+      'disabled': 'Desativado',
       'playback_not_supported': 'Seu navegador não supporta a reprodução deste video. Por favor, tente usar um navegador diferente.'
      }
   }
 }
 ```
 
-If you want to provide your translations, create a PR by editing the [Strings][https://github.com/clappr/clappr/blob/master/src/plugins/strings.js#L36-L50] plugin.
+If you want to provide your translations, create a PR by editing the [Strings](https://github.com/clappr/clappr/blob/master/src/plugins/strings.js#L36-L50) plugin.
 
 ##### Allow user interaction (in chromeless mode)
 Add `allowUserInteraction: true` if you want the player to handle clicks/taps when in chromeless mode. By default it's set to `false` on desktop browsers, and `true` on mobile browsers (due to playback start only being allowed when started through user interaction).
@@ -68,11 +71,8 @@ Add `playbackNotSupportedMessage: 'Please try on a different browser'` to define
 ##### Preload
 In case you're loading a on demand video (mp4), it's possible to define the way the video will be preloaded according to [preload](http://www.stevesouders.com/blog/2013/04/12/html5-video-preload/) attribute options. Add `preload: <type>` on embed parameters. By default, Clappr will try to download only video metadata (`preload: 'metadata'`).
 
-##### HLS Buffer Length
-The default behavior for the HLS playback is to keep buffering indefinitely, even on VoD. This replicates the behavior for progressive download, which continues buffering when pausing the video, thus making the video available for playback even on slow networks. To change this behavior, add `maxBufferLength: <value>` to embed parameters, where `value` is in seconds.
-
-##### Playback configuration
-The configuration for the playback, it's still only compatible with `html5_video` playback.
+### Playback configuration
+The configuration for the playback, it's still only compatible with `html5_video` playback (and derived).
 
 ```javascript
 {
@@ -81,9 +81,65 @@ The configuration for the playback, it's still only compatible with `html5_video
     controls: true,
     playInline: true, // allows inline playback when running on iOS UIWebview
     crossOrigin: 'use-credentials',
-    recycleVideo: true // Recycle <video> element for mobile device. (default is false)
+    recycleVideo: Clappr.Browser.isMobile, // Recycle <video> element only for mobile. (default is false)
+    externalTracks: [ // Add external <track> (if supported by browser, see also https://www.w3.org/TR/html5/embedded-content-0.html#the-track-element)
+      {lang: 'en', label: 'English', src: 'http://example.com/en.vtt', kind: 'subtitles'},
+      {lang: 'fr', label: 'French', src: 'http://example.com/fr.vtt'} // 'kind' default value is 'subtitles'
+    ]
   }
 }
+```
+#### HLS configuration
+
+All options to configure the HLS playback should be under `playback`. Any specific settings for hls.js should be in the option `hlsjsConfig`:
+
+```javascript
+{
+  playback: {
+    hlsjsConfig: {
+      // hls.js specific options
+    }
+  }
+}
+```
+
+##### HLS level switch
+The default behavior for the HLS playback is to use [hls.currentLevel](https://github.com/video-dev/hls.js/blob/master/docs/API.md#hlscurrentlevel) to switch current level. To change this behaviour and force HLS playback to use [hls.nextLevel](https://github.com/video-dev/hls.js/blob/master/docs/API.md#hlsnextlevel), add `hlsUseNextLevel: true` to embed parameters. (default value is false)
+
+Ex:
+```javascript
+{
+  playback: {
+    hlsUseNextLevel: true
+  }
+}
+```
+
+##### HLS Buffer Length
+The default behavior for the HLS playback is to keep buffering indefinitely, even on VoD. This replicates the behavior for progressive download, which continues buffering when pausing the video, thus making the video available for playback even on slow networks. To change this behavior, add `maxMaxBufferLength: <value>` to embed parameters, where `value` is in seconds.
+
+```javascript
+{
+  playback: {
+    hlsjsConfig: {
+      maxMaxBufferLength: value
+    }
+  }
+}
+```
+
+##### Closed Captions Plugin
+Customize the labels and title:
+
+```javascript
+  var player = new Clappr.Player({
+    source: "http://your.video/here.mp4",
+    closedCaptionsConfig: {
+      title: 'Subtitles', // default is none
+      ariaLabel: 'Closed Captions', // Default is 'cc-button'
+      labelCallback: function (track) { return track.name }, // track is an object with id, name and track properties (track is TextTrack object)
+    },
+  });
 ```
 
 ##### Google Analytics Plugin
@@ -134,13 +190,15 @@ you might consider subclassing the base `MediaControl` and using your own custom
   }
   let player = new Clappr.Player({
     source: "http://your.video/here.mp4",
-    mediacontrol: MyMediaControl
+    plugins: { core: MyMediaControl }
   });
 ```
 
 ##### Media Control Auto Hide
 
 If you want to disable media control auto hide, add `hideMediaControl: false` in your embed parameters.
+
+If you want to change the default media control auto hide timeout value, add `hideMediaControlDelay: 2000` in your embed parameters. (delay in milliseconds)
 
 ##### Hide Volume Bar
 

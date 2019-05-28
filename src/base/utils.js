@@ -3,10 +3,12 @@
 // license that can be found in the LICENSE file.
 /*jshint -W079 */
 
-import Browser from 'components/browser'
+import './polyfills'
+import Browser from '../components/browser'
 import $ from 'clappr-zepto'
+import Media from './media'
 
-function assign(obj, source) {
+export function assign(obj, source) {
   if (source) {
     for (const prop in source) {
       const propDescriptor = Object.getOwnPropertyDescriptor(source, prop)
@@ -20,9 +22,9 @@ export function extend(parent, properties) {
   class Surrogate extends parent {
     constructor(...args) {
       super(...args)
-      if (properties.initialize) {
+      if (properties.initialize)
         properties.initialize.apply(this, args)
-      }
+
     }
   }
   assign(Surrogate.prototype, properties)
@@ -30,9 +32,9 @@ export function extend(parent, properties) {
 }
 
 export function formatTime(time, paddedHours) {
-  if (!isFinite(time)) {
+  if (!isFinite(time))
     return '--:--'
-  }
+
   time = time * 1000
   time = parseInt(time/1000)
   const seconds = time % 60
@@ -44,9 +46,9 @@ export function formatTime(time, paddedHours) {
   let out = ''
   if (days && days > 0) {
     out += days + ':'
-    if (hours < 1) {out += '00:'}
+    if (hours < 1) out += '00:'
   }
-  if (hours && hours > 0 || paddedHours) {out += ('0' + hours).slice(-2) + ':'}
+  if (hours && hours > 0 || paddedHours) out += ('0' + hours).slice(-2) + ':'
   out += ('0' + minutes).slice(-2) + ':'
   out += ('0' + seconds).slice(-2)
   return out.trim()
@@ -62,30 +64,32 @@ export const Fullscreen = {
     )
   },
   requestFullscreen: function(el) {
-    if(el.requestFullscreen) {
+    if (el.requestFullscreen)
       el.requestFullscreen()
-    } else if(el.webkitRequestFullscreen) {
+    else if (el.webkitRequestFullscreen)
       el.webkitRequestFullscreen()
-    } else if(el.mozRequestFullScreen) {
+    else if (el.mozRequestFullScreen)
       el.mozRequestFullScreen()
-    } else if(el.msRequestFullscreen) {
+    else if (el.msRequestFullscreen)
       el.msRequestFullscreen()
-    } else if (el.querySelector && el.querySelector('video') && el.querySelector('video').webkitEnterFullScreen) {
+    else if (el.querySelector && el.querySelector('video') && el.querySelector('video').webkitEnterFullScreen)
       el.querySelector('video').webkitEnterFullScreen()
-    }
+    else if (el.webkitEnterFullScreen)
+      el.webkitEnterFullScreen()
+
   },
-  cancelFullscreen: function() {
-    if(document.exitFullscreen) {
-      document.exitFullscreen()
-    } else if(document.webkitCancelFullScreen) {
-      document.webkitCancelFullScreen()
-    } else if(document.webkitExitFullscreen) {
-      document.webkitExitFullscreen()
-    } else if(document.mozCancelFullScreen) {
-      document.mozCancelFullScreen()
-    } else if(document.msExitFullscreen) {
-      document.msExitFullscreen()
-    }
+  cancelFullscreen: function(el=document) {
+    if (el.exitFullscreen)
+      el.exitFullscreen()
+    else if (el.webkitCancelFullScreen)
+      el.webkitCancelFullScreen()
+    else if (el.webkitExitFullscreen)
+      el.webkitExitFullscreen()
+    else if (el.mozCancelFullScreen)
+      el.mozCancelFullScreen()
+    else if (el.msExitFullscreen)
+      el.msExitFullscreen()
+
   },
   fullscreenEnabled: function() {
     return !!(
@@ -111,19 +115,19 @@ export class Config {
   static _defaultValueFor(key) {
     try {
       return this._defaultConfig()[key].parse(this._defaultConfig()[key].value)
-    } catch(e) {
+    } catch (e) {
       return undefined
     }
   }
 
-  static _createKeyspace(key){
+  static _createKeyspace(key) {
     return `clappr.${document.domain}.${key}`
   }
 
   static restore(key) {
-    if (Browser.hasLocalstorage && localStorage[this._createKeyspace(key)]){
+    if (Browser.hasLocalstorage && localStorage[this._createKeyspace(key)])
       return this._defaultConfig()[key].parse(localStorage[this._createKeyspace(key)])
-    }
+
     return this._defaultValueFor(key)
   }
 
@@ -132,7 +136,7 @@ export class Config {
       try {
         localStorage[this._createKeyspace(key)] = value
         return true
-      } catch(e) {
+      } catch (e) {
         return false
       }
     }
@@ -176,7 +180,7 @@ export function seekStringToSeconds(paramName = 't') {
   const seekString = QueryString.params[paramName] || QueryString.hashParams[paramName] || ''
   const parts = seekString.match(/[0-9]+[hms]+/g) || []
   if (parts.length > 0) {
-    const factor = {'h': 3600, 'm': 60, 's': 1}
+    const factor = { 'h': 3600, 'm': 60, 's': 1 }
     parts.forEach(function(el) {
       if (el) {
         const suffix = el[el.length - 1]
@@ -184,9 +188,8 @@ export function seekStringToSeconds(paramName = 't') {
         seconds += time * (factor[suffix])
       }
     })
-  } else if (seekString) {
-    seconds = parseInt(seekString, 10)
-  }
+  } else if (seekString) { seconds = parseInt(seekString, 10) }
+
   return seconds
 }
 
@@ -222,17 +225,65 @@ export function getBrowserLanguage() {
 }
 
 export function now() {
-  if (window.performance && window.performance.now) {
+  if (window.performance && window.performance.now)
     return performance.now()
-  }
+
   return Date.now()
 }
 
 // remove the item from the array if it exists in the array
 export function removeArrayItem(arr, item) {
   const i = arr.indexOf(item)
-  if (i >= 0) {
+  if (i >= 0)
     arr.splice(i, 1)
+
+}
+
+// find an item regardless of its letter case
+export function listContainsIgnoreCase(item, items) {
+  if (item === undefined || items === undefined) return false
+  return items.find((itemEach) => item.toLowerCase() === itemEach.toLowerCase()) !== undefined
+}
+
+// https://github.com/video-dev/can-autoplay
+export function canAutoPlayMedia(cb, options) {
+  options = Object.assign({
+    inline: false,
+    muted: false,
+    timeout: 250,
+    type: 'video',
+    source: Media.mp4,
+    element: null
+  }, options)
+
+  let element = options.element ? options.element : document.createElement(options.type)
+
+  element.muted = options.muted
+  if (options.muted === true)
+    element.setAttribute('muted', 'muted')
+
+  if (options.inline === true)
+    element.setAttribute('playsinline', 'playsinline')
+
+  element.src = options.source
+
+  let promise = element.play()
+
+  let timeoutId = setTimeout(() => {
+    setResult(false, new Error(`Timeout ${options.timeout} ms has been reached`))
+  }, options.timeout)
+
+  let setResult = (result, error = null) => {
+    clearTimeout(timeoutId)
+    cb(result, error)
+  }
+
+  if (promise !== undefined) {
+    promise
+      .then(() => setResult(true))
+      .catch(err => setResult(false, err))
+  } else {
+    setResult(true)
   }
 }
 
@@ -245,9 +296,9 @@ export class DomRecycler {
   }
 
   static create(name) {
-    if (this.options.recycleVideo && name === 'video' && videoStack.length > 0) {
+    if (this.options.recycleVideo && name === 'video' && videoStack.length > 0)
       return videoStack.shift()
-    }
+
     return $('<' + name + '>')
   }
 
@@ -260,6 +311,26 @@ export class DomRecycler {
 }
 
 DomRecycler.options = { recycleVideo: false }
+
+export class DoubleEventHandler {
+  constructor(delay = 500) {
+    this.delay = delay
+    this.lastTime = 0
+  }
+
+  handle(event, cb, prevented = true) {
+    // Based on http://jsfiddle.net/brettwp/J4djY/
+    let currentTime = new Date().getTime()
+    let diffTime = currentTime - this.lastTime
+
+    if (diffTime < this.delay && diffTime > 0) {
+      cb()
+      prevented && event.preventDefault()
+    }
+
+    this.lastTime = currentTime
+  }
+}
 
 export default {
   Config,
@@ -276,5 +347,8 @@ export default {
   cancelAnimationFrame,
   getBrowserLanguage,
   now,
-  removeArrayItem
+  removeArrayItem,
+  canAutoPlayMedia,
+  Media,
+  DoubleEventHandler
 }

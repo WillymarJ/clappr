@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import UIContainerPlugin from 'base/ui_container_plugin'
-import Events from 'base/events'
-import Styler from 'base/styler'
-import template from 'base/template'
-import Playback from 'base/playback'
-import posterStyle from './public/poster.scss'
+import UIContainerPlugin from '../../base/ui_container_plugin'
+import Events from '../../base/events'
+import template from '../../base/template'
+import Playback from '../../base/playback'
+import PlayerError from '../../components/error/error'
 import posterHTML from './public/poster.html'
-import playIcon from 'icons/01-play.svg'
+import playIcon from '../../icons/01-play.svg'
+import './public/poster.scss'
 
 export default class PosterPlugin extends UIContainerPlugin {
   get name() { return 'poster' }
@@ -50,11 +50,18 @@ export default class PosterPlugin extends UIContainerPlugin {
     this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERING, this.update)
     this.listenTo(this.container, Events.CONTAINER_STATE_BUFFERFULL, this.update)
     this.listenTo(this.container, Events.CONTAINER_OPTIONS_CHANGE, this.render)
+    this.listenTo(this.container, Events.CONTAINER_ERROR, this.onError)
     this.showOnVideoEnd && this.listenTo(this.container, Events.CONTAINER_ENDED, this.onStop)
   }
 
-  stopListening() {
-    super.stopListening()
+  onError(error) {
+    this.hasFatalError = error.level === PlayerError.Levels.FATAL
+
+    if (this.hasFatalError) {
+      this.hasStartedPlaying = false
+      this.playRequested = false
+      this.showPlayButton()
+    }
   }
 
   onPlay() {
@@ -68,14 +75,23 @@ export default class PosterPlugin extends UIContainerPlugin {
     this.update()
   }
 
-  showPlayButton(show) {
-    if (show && (!this.options.chromeless || this.options.allowUserInteraction)) {
-      this.$playButton.show()
-      this.$el.addClass('clickable')
-    } else {
-      this.$playButton.hide()
-      this.$el.removeClass('clickable')
-    }
+  updatePlayButton(show) {
+    if (show && (!this.options.chromeless || this.options.allowUserInteraction))
+      this.showPlayButton()
+    else
+      this.hidePlayButton()
+  }
+
+  showPlayButton() {
+    if (this.hasFatalError && !this.options.disableErrorScreen) return
+
+    this.$playButton.show()
+    this.$el.addClass('clickable')
+  }
+
+  hidePlayButton() {
+    this.$playButton.hide()
+    this.$el.removeClass('clickable')
   }
 
   clicked() {
@@ -93,38 +109,43 @@ export default class PosterPlugin extends UIContainerPlugin {
   }
 
   update() {
-    if (!this.shouldRender) {
+    if (!this.shouldRender)
       return
-    }
+
     let showPlayButton = !this.playRequested  && !this.hasStartedPlaying && !this.container.buffering
-    this.showPlayButton(showPlayButton)
-    if (!this.hasStartedPlaying) {
-      this.container.disableMediaControl()
-      this.$el.show()
-    } else {
-      this.container.enableMediaControl()
-      if (this.shouldHideOnPlay()) {
-        this.$el.hide()
-      }
-    }
+    this.updatePlayButton(showPlayButton)
+    this.updatePoster()
+  }
+
+  updatePoster() {
+    if (!this.hasStartedPlaying) this.showPoster()
+    else this.hidePoster()
+  }
+
+  showPoster() {
+    this.container.disableMediaControl()
+    this.$el.show()
+  }
+
+  hidePoster() {
+    this.container.enableMediaControl()
+    if (this.shouldHideOnPlay())
+      this.$el.hide()
   }
 
   render() {
-    if (!this.shouldRender) {
+    if (!this.shouldRender)
       return
-    }
-    let style = Styler.getStyleFor(posterStyle, {baseUrl: this.options.baseUrl})
-    this.$el.html(this.template())
-    this.$el.append(style)
 
-    const isRegularPoster = this.options.poster && this.options.poster.custom == undefined
+    this.$el.html(this.template())
+
+    const isRegularPoster = this.options.poster && this.options.poster.custom === undefined
 
     if (isRegularPoster) {
       const posterUrl = this.options.poster.url || this.options.poster
-      this.$el.css({'background-image': 'url(' + posterUrl + ')'})
-    } else if (this.options.poster) {
-      this.$el.css({'background': this.options.poster.custom})
-    }
+      this.$el.css({ 'background-image': 'url(' + posterUrl + ')' })
+    } else if (this.options.poster) { this.$el.css({ 'background': this.options.poster.custom }) }
+
     this.container.$el.append(this.el)
     this.$playWrapper = this.$el.find('.play-wrapper')
     this.$playWrapper.append(playIcon)
@@ -133,9 +154,8 @@ export default class PosterPlugin extends UIContainerPlugin {
     this.$playButton.attr('data-poster', '')
 
     let buttonsColor = this.options.mediacontrol && this.options.mediacontrol.buttons
-    if (buttonsColor) {
+    if (buttonsColor)
       this.$el.find('svg path').css('fill', buttonsColor)
-    }
 
     if (this.options.mediacontrol && this.options.mediacontrol.buttons) {
       buttonsColor = this.options.mediacontrol.buttons

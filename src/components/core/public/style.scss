@@ -1,20 +1,12 @@
 @import 'reset';
 @import 'noselect';
 @import 'fontsmoothing';
-@import 'bourbon';
-
-@font-face {
-  font-family: "Roboto";
-  font-style: normal;
-  font-weight: 400;
-  src: local("Roboto"), local("Roboto-Regular"), url("./Roboto.ttf") format("truetype");
-}
 
 [data-player] {
   @include nested-reset;
   @include no-select;
   @include font-smoothing;
-  @include transform(translate3d(0,0,0));
+  transform: translate3d(0,0,0);
   position: relative;
   margin: 0;
   padding: 0;

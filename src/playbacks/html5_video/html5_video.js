@@ -2,18 +2,21 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import {seekStringToSeconds, DomRecycler} from 'base/utils'
+import { isNumber, seekStringToSeconds, DomRecycler, canAutoPlayMedia } from '../../base/utils'
 
-import Playback from 'base/playback'
-import Styler from 'base/styler'
-import Browser from 'components/browser'
-import Events from 'base/events'
-import tagStyle from './public/style.scss'
+import Playback from '../../base/playback'
+import Browser from '../../components/browser'
+import PlayerError from '../../components/error'
+import Events from '../../base/events'
+import Log from '../../plugins/log'
 import $ from 'clappr-zepto'
+import template from '../../base/template'
+import tracksHTML from './public/tracks.html'
+import './public/style.scss'
 
 const MIMETYPES = {
   'mp4': ['avc1.42E01E', 'avc1.58A01E', 'avc1.4D401E', 'avc1.64001E', 'mp4v.20.8', 'mp4v.20.240', 'mp4a.40.2'].map(
-    (codec) => { return 'video/mp4; codecs="' + codec + ', mp4a.40.2"'}),
+    (codec) => { return 'video/mp4; codecs="' + codec + ', mp4a.40.2"' }),
   'ogg': ['video/ogg; codecs="theora, vorbis"', 'video/ogg; codecs="dirac"', 'video/ogg; codecs="theora, speex"'],
   '3gpp': ['video/3gpp; codecs="mp4v.20.8, samr"'],
   'webm': ['video/webm; codecs="vp8, vorbis"'],
@@ -31,6 +34,8 @@ const AUDIO_MIMETYPES = {
 }
 
 const KNOWN_AUDIO_MIMETYPES = Object.keys(AUDIO_MIMETYPES).reduce((acc, k) => [...acc, ...AUDIO_MIMETYPES[k]], [])
+
+const UNKNOWN_ERROR = { code: 'unknown', message: 'unknown' }
 
 // TODO: rename this Playback to HTML5Playback (breaking change, only after 0.3.0)
 export default class HTML5Video extends Playback {
@@ -61,8 +66,8 @@ export default class HTML5Video extends Playback {
       'pause': '_onPause',
       'playing': '_onPlaying',
       'progress': '_onProgress',
-      'seeked': '_handleBufferingEvents',
-      'seeking': '_handleBufferingEvents',
+      'seeking': '_onSeeking',
+      'seeked': '_onSeeked',
       'stalled': '_handleBufferingEvents',
       'timeupdate': '_onTimeUpdate',
       'waiting': '_onWaiting'
@@ -86,16 +91,18 @@ export default class HTML5Video extends Playback {
    * @type Boolean
    */
   get buffering() {
-    return !!this._bufferingState
+    return this._isBuffering
   }
 
   constructor(...args) {
     super(...args)
     this._destroyed = false
     this._loadStarted = false
+    this._isBuffering = false
     this._playheadMoving = false
     this._playheadMovingTimer = null
     this._stopped = false
+    this._ccTrackId = -1
     this._setupSrc(this.options.src)
     // backwards compatibility (TODO: remove on 0.3.0)
     this.options.playback || (this.options.playback = this.options || {})
@@ -106,14 +113,16 @@ export default class HTML5Video extends Playback {
 
     let posterUrl // FIXME: poster plugin should always convert poster to object with expected properties ?
     if (this.options.poster) {
-      if (typeof this.options.poster === 'string') {
+      if (typeof this.options.poster === 'string')
         posterUrl = this.options.poster
-      } else if (typeof this.options.poster.url === 'string') {
+      else if (typeof this.options.poster.url === 'string')
         posterUrl = this.options.poster.url
-      }
+
     }
 
     $.extend(this.el, {
+      muted: this.options.mute,
+      defaultMuted: this.options.mute,
       loop: this.options.loop,
       poster: posterUrl,
       preload: preload || 'metadata',
@@ -122,15 +131,59 @@ export default class HTML5Video extends Playback {
       'x-webkit-playsinline': playbackConfig.playInline
     })
 
-    playbackConfig.playInline && (this.$el.attr({playsinline: 'playsinline'}))
+    playbackConfig.playInline && (this.$el.attr({ playsinline: 'playsinline' }))
+    playbackConfig.crossOrigin && (this.$el.attr({ crossorigin: playbackConfig.crossOrigin }))
 
     // TODO should settings be private?
-    this.settings = {default: ['seekbar']}
+    this.settings = { default: ['seekbar'] }
     this.settings.left = ['playpause', 'position', 'duration']
     this.settings.right = ['fullscreen', 'volume', 'hd-indicator']
 
-    // https://github.com/clappr/clappr/issues/1076
-    this.options.autoPlay && process.nextTick(() => !this._destroyed && this.play())
+    playbackConfig.externalTracks && (this._setupExternalTracks(playbackConfig.externalTracks))
+
+    this.options.autoPlay && this.attemptAutoPlay()
+  }
+
+  // See Playback.attemptAutoPlay()
+  attemptAutoPlay() {
+    this.canAutoPlay((result, error) => {
+      error && Log.warn(this.name, 'autoplay error.', { result, error })
+
+      // https://github.com/clappr/clappr/issues/1076
+      result && process.nextTick(() => !this._destroyed && this.play())
+    })
+  }
+
+  // See Playback.canAutoPlay()
+  canAutoPlay(cb) {
+    if (this.options.disableCanAutoPlay)
+      cb(true, null)
+
+    let opts = {
+      timeout: this.options.autoPlayTimeout || 500,
+      inline: this.options.playback.playInline || false,
+      muted: this.options.mute || false, // Known issue: mediacontrols may asynchronously mute video
+    }
+
+    // Use current video element if recycling feature enabled with mobile devices
+    if (Browser.isMobile && DomRecycler.options.recycleVideo)
+      opts.element = this.el
+
+    // Desktop browser autoplay policy may require user action
+    // Mobile browser autoplay require user consent and video recycling feature enabled
+    // It may returns a false positive with source-less player consent
+    canAutoPlayMedia(cb, opts)
+  }
+
+  _setupExternalTracks(tracks) {
+    this._externalTracks = tracks.map(track => {
+      return {
+        kind: track.kind || 'subtitles', // Default is 'subtitles'
+        label: track.label,
+        lang: track.lang,
+        src: track.src,
+      }
+    })
   }
 
   /**
@@ -140,21 +193,22 @@ export default class HTML5Video extends Playback {
    * @param {String} srcUrl The source URL.
    */
   _setupSrc(srcUrl) {
-    if (this.el.src === srcUrl) {
+    if (this.el.src === srcUrl)
       return
-    }
-    this._src = srcUrl
+
+    this._ccIsSetup = false
     this.el.src = srcUrl
+    this._src = this.el.src
   }
 
   _onLoadedMetadata(e) {
     this._handleBufferingEvents()
-    this.trigger(Events.PLAYBACK_LOADEDMETADATA, {duration: e.target.duration, data: e})
+    this.trigger(Events.PLAYBACK_LOADEDMETADATA, { duration: e.target.duration, data: e })
     this._updateSettings()
-    const autoSeekFromUrl = typeof(this._options.autoSeekFromUrl) === 'undefined' || this._options.autoSeekFromUrl
-    if (this.getPlaybackType() !== Playback.LIVE && autoSeekFromUrl) {
+    const autoSeekFromUrl = typeof (this._options.autoSeekFromUrl) === 'undefined' || this._options.autoSeekFromUrl
+    if (this.getPlaybackType() !== Playback.LIVE && autoSeekFromUrl)
       this._checkInitialSeek()
-    }
+
   }
 
   _onDurationChange() {
@@ -167,11 +221,11 @@ export default class HTML5Video extends Playback {
   _updateSettings() {
     // we can't figure out if hls resource is VoD or not until it is being loaded or duration has changed.
     // that's why we check it again and update media control accordingly.
-    if (this.getPlaybackType() === Playback.VOD || this.getPlaybackType() === Playback.AOD) {
+    if (this.getPlaybackType() === Playback.VOD || this.getPlaybackType() === Playback.AOD)
       this.settings.left = ['playpause', 'position', 'duration']
-    } else {
+    else
       this.settings.left = ['playstop']
-    }
+
     this.settings.seekEnabled = this.isSeekEnabled()
     this.trigger(Events.PLAYBACK_SETTINGSUPDATE)
   }
@@ -192,7 +246,10 @@ export default class HTML5Video extends Playback {
   // On mobile device, HTML5 video element "retains" user action consent if
   // load() method is called. See Player.consent().
   consent() {
-    !this.isPlaying() && this.el.load()
+    if (!this.isPlaying()) {
+      super.consent()
+      this.el.load()
+    }
   }
 
   play() {
@@ -200,7 +257,11 @@ export default class HTML5Video extends Playback {
     this._stopped = false
     this._setupSrc(this._src)
     this._handleBufferingEvents()
-    this.el.play()
+    let promise = this.el.play()
+    // For more details, see https://developers.google.com/web/updates/2016/03/play-returns-promise
+    if (promise && promise.catch)
+      promise.catch(() => {})
+
   }
 
   pause() {
@@ -212,25 +273,41 @@ export default class HTML5Video extends Playback {
     this._stopped = true
     // src will be added again in play()
     this.el.removeAttribute('src')
+    this.el.load() // load with no src to stop loading of the previous source and avoid leaks
     this._stopPlayheadMovingChecks()
     this._handleBufferingEvents()
     this.trigger(Events.PLAYBACK_STOP)
   }
 
   volume(value) {
-    this.el.volume = value / 100
+    if (value === 0) {
+      this.$el.attr({ muted: 'true' })
+      this.el.muted = true
+    } else {
+      this.$el.attr({ muted: null })
+      this.el.muted = false
+      this.el.volume = value / 100
+    }
   }
 
+  /**
+   * @deprecated
+   * @private
+   */
   mute() {
-    this.el.volume = 0
+    this.el.muted = true
   }
 
+  /**
+   * @deprecated
+   * @private
+   */
   unmute() {
-    this.el.volume = 1
+    this.el.muted = false
   }
 
   isMuted() {
-    return !!this.el.volume
+    return this.el.muted === true || this.el.volume === 0
   }
 
   isPlaying() {
@@ -242,18 +319,18 @@ export default class HTML5Video extends Playback {
   }
 
   _startPlayheadMovingChecks() {
-    if (this._playheadMovingTimer !== null) {
+    if (this._playheadMovingTimer !== null)
       return
-    }
+
     this._playheadMovingTimeOnCheck = null
     this._determineIfPlayheadMoving()
     this._playheadMovingTimer = setInterval(this._determineIfPlayheadMoving.bind(this), 500)
   }
 
   _stopPlayheadMovingChecks() {
-    if (this._playheadMovingTimer === null) {
+    if (this._playheadMovingTimer === null)
       return
-    }
+
     clearInterval(this._playheadMovingTimer)
     this._playheadMovingTimer = null
     this._playheadMoving = false
@@ -298,6 +375,7 @@ export default class HTML5Video extends Playback {
   }
 
   _onPlaying() {
+    this._checkForClosedCaptions()
     this._startPlayheadMovingChecks()
     this._handleBufferingEvents()
     this.trigger(Events.PLAYBACK_PLAY)
@@ -307,6 +385,16 @@ export default class HTML5Video extends Playback {
     this._stopPlayheadMovingChecks()
     this._handleBufferingEvents()
     this.trigger(Events.PLAYBACK_PAUSE)
+  }
+
+  _onSeeking() {
+    this._handleBufferingEvents()
+    this.trigger(Events.PLAYBACK_SEEK)
+  }
+
+  _onSeeked() {
+    this._handleBufferingEvents()
+    this.trigger(Events.PLAYBACK_SEEKED)
   }
 
   _onEnded() {
@@ -322,25 +410,39 @@ export default class HTML5Video extends Playback {
   _handleBufferingEvents() {
     const playheadShouldBeMoving = !this.el.ended && !this.el.paused
     const buffering = this._loadStarted && !this.el.ended && !this._stopped && ((playheadShouldBeMoving && !this._playheadMoving) || this.el.readyState < this.el.HAVE_FUTURE_DATA)
-    if (this._bufferingState !== buffering) {
-      this._bufferingState = buffering
-      if (buffering) {
+    if (this._isBuffering !== buffering) {
+      this._isBuffering = buffering
+      if (buffering)
         this.trigger(Events.PLAYBACK_BUFFERING, this.name)
-      }
-      else {
+      else
         this.trigger(Events.PLAYBACK_BUFFERFULL, this.name)
-      }
+
     }
   }
 
   _onError() {
-    this.trigger(Events.PLAYBACK_ERROR, this.el.error, this.name)
+    const { code, message } = this.el.error || UNKNOWN_ERROR
+    const isUnknownError = code === UNKNOWN_ERROR.code
+
+    const formattedError = this.createError({
+      code,
+      description: message,
+      raw: this.el.error,
+      level: isUnknownError ? PlayerError.Levels.WARN : PlayerError.Levels.FATAL
+    })
+
+    if (isUnknownError)
+      Log.warn(this.name, 'HTML5 unknown error: ', formattedError)
+    else
+      this.trigger(Events.PLAYBACK_ERROR, formattedError)
   }
 
   destroy() {
     this._destroyed = true
-    this.$el.remove()
-    this.el.src = ''
+    this.handleTextTrackChange && this.el.textTracks.removeEventListener('change', this.handleTextTrackChange)
+    super.destroy()
+    this.el.removeAttribute('src')
+    this.el.load() // load with no src to stop loading of the previous source and avoid leaks
     this._src = null
     DomRecycler.garbage(this.$el)
   }
@@ -356,9 +458,9 @@ export default class HTML5Video extends Playback {
 
   _checkInitialSeek() {
     const seekTime = seekStringToSeconds()
-    if (seekTime !== 0) {
+    if (seekTime !== 0)
       this.seek(seekTime)
-    }
+
   }
 
   getCurrentTime() {
@@ -370,25 +472,24 @@ export default class HTML5Video extends Playback {
   }
 
   _onTimeUpdate() {
-    this._handleBufferingEvents()
-    if (this.getPlaybackType() === Playback.LIVE) {
-      this.trigger(Events.PLAYBACK_TIMEUPDATE, {current: 1, total: 1}, this.name)
-    } else {
-      this.trigger(Events.PLAYBACK_TIMEUPDATE, {current: this.el.currentTime, total: this.el.duration}, this.name)
-    }
+    if (this.getPlaybackType() === Playback.LIVE)
+      this.trigger(Events.PLAYBACK_TIMEUPDATE, { current: 1, total: 1 }, this.name)
+    else
+      this.trigger(Events.PLAYBACK_TIMEUPDATE, { current: this.el.currentTime, total: this.el.duration }, this.name)
+
   }
 
   _onProgress() {
-    if (!this.el.buffered.length) {
+    if (!this.el.buffered.length)
       return
-    }
+
     let buffered = []
     let bufferedPos = 0
     for (let i = 0;  i < this.el.buffered.length; i++) {
-      buffered = [...buffered, {start: this.el.buffered.start(i), end: this.el.buffered.end(i)}]
-      if (this.el.currentTime >= buffered[i].start && this.el.currentTime <= buffered[i].end) {
+      buffered = [...buffered, { start: this.el.buffered.start(i), end: this.el.buffered.end(i) }]
+      if (this.el.currentTime >= buffered[i].start && this.el.currentTime <= buffered[i].end)
         bufferedPos = i
-      }
+
     }
     const progress = {
       start: buffered[bufferedPos].start,
@@ -400,31 +501,113 @@ export default class HTML5Video extends Playback {
 
   _typeFor(src) {
     let mimeTypes = HTML5Video._mimeTypesForUrl(src, MIMETYPES, this.options.mimeType)
-    if (mimeTypes.length == 0) {
+    if (mimeTypes.length === 0)
       mimeTypes = HTML5Video._mimeTypesForUrl(src, AUDIO_MIMETYPES, this.options.mimeType)
-    }
+
     const mimeType = mimeTypes[0] || ''
     return mimeType.split(';')[0]
   }
 
   _ready() {
-    if (this._isReadyState) {
+    if (this._isReadyState)
       return
-    }
+
     this._isReadyState = true
     this.trigger(Events.PLAYBACK_READY, this.name)
   }
 
-  render() {
-    const style = Styler.getStyleFor(tagStyle)
+  _checkForClosedCaptions() {
+    // Check if CC available only if current playback is HTML5Video
+    if (this.isHTML5Video && !this._ccIsSetup) {
+      if (this.hasClosedCaptionsTracks) {
+        this.trigger(Events.PLAYBACK_SUBTITLE_AVAILABLE)
+        const trackId = this.closedCaptionsTrackId
+        this.closedCaptionsTrackId = trackId
+        this.handleTextTrackChange = this._handleTextTrackChange.bind(this)
+        this.el.textTracks.addEventListener('change', this.handleTextTrackChange)
+      }
+      this._ccIsSetup = true
+    }
+  }
 
+  _handleTextTrackChange() {
+    let tracks = this.closedCaptionsTracks
+    let track = tracks.find(track => track.track.mode === 'showing') || { id: -1 }
+
+    if (this._ccTrackId !== track.id) {
+      this._ccTrackId = track.id
+      this.trigger(Events.PLAYBACK_SUBTITLE_CHANGED, {
+        id: track.id
+      })
+    }
+  }
+
+  get isHTML5Video() {
+    return this.name === HTML5Video.prototype.name
+  }
+
+  get closedCaptionsTracks() {
+    let id = 0
+    let trackId = () => { return id++ }
+    let textTracks = this.el.textTracks ? Array.from(this.el.textTracks) : []
+
+    return textTracks
+      .filter(track => track.kind === 'subtitles' || track.kind === 'captions')
+      .map(track => { return { id: trackId(), name: track.label, track: track } })
+  }
+
+  get closedCaptionsTrackId() {
+    return this._ccTrackId
+  }
+
+  set closedCaptionsTrackId(trackId) {
+    if (!isNumber(trackId))
+      return
+
+
+    let tracks = this.closedCaptionsTracks
+    let showingTrack
+
+    // Note: -1 is for hide all tracks
+    if (trackId !== -1) {
+      showingTrack = tracks.find(track => track.id === trackId)
+      if (!showingTrack)
+        return // Track id not found
+
+      if (showingTrack.track.mode === 'showing')
+        return // Track already showing
+
+    }
+
+    // Since it is possible to display multiple tracks,
+    // ensure that all tracks are hidden.
+    tracks
+      .filter(track => track.track.mode !== 'hidden')
+      .forEach(track => track.track.mode = 'hidden')
+
+    showingTrack && (showingTrack.track.mode = 'showing')
+
+    this._ccTrackId = trackId
+    this.trigger(Events.PLAYBACK_SUBTITLE_CHANGED, {
+      id: trackId
+    })
+  }
+
+  get template() { return template(tracksHTML) }
+
+  render() {
     if (this.options.playback.disableContextMenu) {
       this.$el.on('contextmenu', () => {
         return false
       })
     }
 
-    this.$el.append(style)
+    if (this._externalTracks && this._externalTracks.length > 0) {
+      this.$el.html(this.template({
+        tracks: this._externalTracks,
+      }))
+    }
+
     this._ready()
     return this
   }
@@ -446,5 +629,3 @@ HTML5Video.canPlay = function(resourceUrl, mimeType) {
   return HTML5Video._canPlay('audio', AUDIO_MIMETYPES, resourceUrl, mimeType) ||
          HTML5Video._canPlay('video', MIMETYPES, resourceUrl, mimeType)
 }
-
-module.exports = HTML5Video

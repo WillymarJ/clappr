@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import {uniqueId, DomRecycler} from './utils'
 import $ from 'clappr-zepto'
-import result from 'lodash.result'
+import { uniqueId, DomRecycler } from './utils'
 import BaseObject from './base_object'
 
 const delegateEventSplitter = /^(\S+)\s*(.*)$/
@@ -123,10 +122,10 @@ export default class UIObject extends BaseObject {
 
   /**
    * removes the ui component from DOM
-   * @method remove
+   * @method destroy
    * @return {UIObject} itself
    */
-  remove() {
+  destroy() {
     this.$el.remove()
     this.stopListening()
     this.undelegateEvents()
@@ -141,10 +140,10 @@ export default class UIObject extends BaseObject {
    * @return {UIObject} itself
    */
   setElement(element, delegate) {
-    if (this.$el) {this.undelegateEvents()}
-    this.$el = element instanceof $ ? element : $(element)
+    if (this.$el) this.undelegateEvents()
+    this.$el = $.zepto.isZ(element) ? element : $(element)
     this.el = this.$el[0]
-    if (delegate !== false) {this.delegateEvents()}
+    if (delegate !== false) this.delegateEvents()
     return this
   }
 
@@ -155,22 +154,21 @@ export default class UIObject extends BaseObject {
    * @return {UIObject} itself
    */
   delegateEvents(events) {
-    if (!(events || (events = result(this, 'events')))) {return this}
+    if (!(events || (events = this.events))) return this
     this.undelegateEvents()
     for (const key in events) {
       let method = events[key]
-      if ((method && method.constructor !== Function)) {method = this[events[key]]}
-      if (!method) {continue}
+      if ((method && method.constructor !== Function)) method = this[events[key]]
+      if (!method) continue
 
       const match = key.match(delegateEventSplitter)
       let eventName = match[1], selector = match[2]
-      //method = _.bind(method, this)
       eventName += '.delegateEvents' + this.cid
-      if (selector === '') {
+      if (selector === '')
         this.$el.on(eventName, method.bind(this))
-      } else {
+      else
         this.$el.on(eventName, selector, method.bind(this))
-      }
+
     }
     return this
   }
@@ -192,13 +190,12 @@ export default class UIObject extends BaseObject {
    */
   _ensureElement() {
     if (!this.el) {
-      const attrs = $.extend({}, result(this, 'attributes'))
-      if (this.id) {attrs.id = result(this, 'id')}
-      if (this.className) {attrs['class'] = result(this, 'className')}
-      const $el = DomRecycler.create(result(this, 'tagName')).attr(attrs)
+      const attrs = $.extend({}, this.attributes)
+      if (this.id) attrs.id = this.id
+      if (this.className) attrs['class'] = this.className
+      const $el = DomRecycler.create(this.tagName).attr(attrs)
       this.setElement($el, false)
-    } else {
-      this.setElement(result(this, 'el'), false)
-    }
+    } else { this.setElement(this.el, false) }
+
   }
 }

@@ -6,21 +6,20 @@
  * The ContainerFactory is responsible for manage playback bootstrap and create containers.
  */
 
-import BaseObject from 'base/base_object'
-import Events from 'base/events'
-import Container from 'components/container'
+import BaseObject from '../../base/base_object'
+import Events from '../../base/events'
+import Container from '../../components/container'
 import $ from 'clappr-zepto'
-
-import isPlainObject from 'lodash.isplainobject'
 
 export default class ContainerFactory extends BaseObject {
   get options() { return this._options }
   set options(options) { this._options = options }
 
-  constructor(options, loader, i18n) {
+  constructor(options, loader, i18n, playerError) {
     super(options)
     this._i18n = i18n
     this.loader = loader
+    this.playerError = playerError
   }
 
   createContainers() {
@@ -38,14 +37,13 @@ export default class ContainerFactory extends BaseObject {
   createContainer(source) {
     let resolvedSource = null,
       mimeType = this.options.mimeType
-    if (isPlainObject(source)) {
+    if (typeof source === 'object') {
       resolvedSource = source.source.toString()
-      if (source.mimeType) {
+      if (source.mimeType)
         mimeType = source.mimeType
-      }
-    } else {
-      resolvedSource = source.toString()
-    }
+
+    } else { resolvedSource = source.toString() }
+
 
     if (resolvedSource.match(/^\/\//)) resolvedSource = window.location.protocol + resolvedSource
 
@@ -54,11 +52,11 @@ export default class ContainerFactory extends BaseObject {
       mimeType: mimeType
     })
     const playbackPlugin = this.findPlaybackPlugin(resolvedSource, mimeType)
-    const playback = new playbackPlugin(options, this._i18n)
+    const playback = new playbackPlugin(options, this._i18n, this.playerError)
 
-    options = $.extend({}, options, {playback: playback})
+    options = $.extend({}, options, { playback: playback })
 
-    const container = new Container(options, this._i18n)
+    const container = new Container(options, this._i18n, this.playerError)
     const defer = $.Deferred()
     defer.promise(container)
     this.addContainerPlugins(container)

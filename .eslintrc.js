@@ -9,6 +9,7 @@ module.exports = {
         "process": false,
         "ActiveXObject": false,
         "VERSION": false,
+        "PLAIN_HTML5_ONLY": false,
         // Build globals
         "__dirname": false,
         // Test globals
@@ -25,7 +26,8 @@ module.exports = {
     },
     "extends": "eslint:recommended",
     "parserOptions": {
-        "sourceType": "module"
+        "sourceType": "module",
+        "ecmaVersion": 2018,
     },
     "rules": {
         "indent": [
@@ -44,6 +46,16 @@ module.exports = {
             "error",
             "never"
         ],
-        "no-var": "error"
+        "no-var": "error",
+        "block-spacing": "error",
+        "curly": ["error", "multi-or-nest", "consistent"],
+        "object-curly-spacing": ["error", "always"],
+        "brace-style": ["error", "1tbs", { "allowSingleLine": true }],
+        "keyword-spacing": "error",
+        "space-before-blocks": "error",
+        "arrow-spacing": "error",
+        // part of Node Style-guide but ignored
+        "max-len": 0,
+        "max-statements": 0,
     }
 };

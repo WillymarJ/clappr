@@ -2,15 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import {formatTime} from 'base/utils'
+import { formatTime } from '../../base/utils'
 
-import UICorePlugin from 'base/ui_core_plugin'
-import Styler from 'base/styler'
-import template from 'base/template'
-import Events from 'base/events'
-import Playback from 'base/playback'
-import seekTimeStyle from './public/seek_time.scss'
+import UICorePlugin from '../../base/ui_core_plugin'
+import template from '../../base/template'
+import Events from '../../base/events'
+import Playback from '../../base/playback'
 import seekTimeHTML from './public/seek_time.html'
+import './public/seek_time.scss'
 
 export default class SeekTime extends UICorePlugin {
   get name() { return 'seek_time' }
@@ -26,20 +25,20 @@ export default class SeekTime extends UICorePlugin {
   get mediaControl() { return this.core.mediaControl }
   get mediaControlContainer() { return this.mediaControl.container }
   get isLiveStreamWithDvr() { return this.mediaControlContainer && this.mediaControlContainer.getPlaybackType() === Playback.LIVE && this.mediaControlContainer.isDvrEnabled() }
-  get durationShown() { return this.isLiveStreamWithDvr && !this.useActualLiveTime }
+  get durationShown() { return this.isLiveStreamWithDvr && !this.actualLiveTime }
   get useActualLiveTime() { return this.actualLiveTime && this.isLiveStreamWithDvr }
   constructor(core) {
     super(core)
     this.hoveringOverSeekBar = false
     this.hoverPosition = null
     this.duration = null
+    this.firstFragDateTime = null
     this.actualLiveTime = !!this.mediaControl.options.actualLiveTime
     if (this.actualLiveTime) {
-      if (this.mediaControl.options.actualLiveServerTime) {
+      if (this.mediaControl.options.actualLiveServerTime)
         this.actualLiveServerTimeDiff = new Date().getTime() - new Date(this.mediaControl.options.actualLiveServerTime).getTime()
-      } else {
+      else
         this.actualLiveServerTimeDiff = 0
-      }
     }
   }
 
@@ -61,6 +60,7 @@ export default class SeekTime extends UICorePlugin {
 
   updateDuration(timeProgress) {
     this.duration = timeProgress.total
+    this.firstFragDateTime = timeProgress.firstFragDateTime
     this.update()
   }
 
@@ -82,18 +82,25 @@ export default class SeekTime extends UICorePlugin {
   }
 
   getSeekTime() {
-    let seekTime, secondsSinceMidnight
+    let seekTime, secondsSinceMidnight, d, e
     if (this.useActualLiveTime) {
-      const d = new Date(new Date().getTime() - this.actualLiveServerTimeDiff), e = new Date(d)
-      secondsSinceMidnight = (e - d.setHours(0,0,0,0)) / 1000
-      seekTime = (secondsSinceMidnight - this.duration) + (this.hoverPosition * this.duration)
-      if (seekTime < 0) {
-        seekTime += 86400
+      if (this.firstFragDateTime) {
+        e = new Date(this.firstFragDateTime)
+        d = new Date(this.firstFragDateTime)
+        d.setHours(0,0,0,0)
+        secondsSinceMidnight = ((e.getTime() - d.getTime()) / 1000) + this.duration
+      } else {
+        d = new Date(new Date().getTime() - this.actualLiveServerTimeDiff)
+        e = new Date(d)
+        secondsSinceMidnight = (e - d.setHours(0,0,0,0)) / 1000
       }
-    } else {
-      seekTime = this.hoverPosition * this.duration
-    }
-    return {seekTime, secondsSinceMidnight}
+      seekTime = (secondsSinceMidnight - this.duration) + (this.hoverPosition * this.duration)
+      if (seekTime < 0)
+        seekTime += 86400
+
+    } else { seekTime = this.hoverPosition * this.duration }
+
+    return { seekTime, secondsSinceMidnight }
   }
 
   update() {
@@ -120,9 +127,8 @@ export default class SeekTime extends UICorePlugin {
           this.$durationEl.text(currentDuration)
           this.displayedDuration = currentDuration
         }
-      } else {
-        this.$durationEl.hide()
-      }
+      } else { this.$durationEl.hide() }
+
 
       // the element must be unhidden before its width is requested, otherwise it's width will be reported as 0
       this.$el.show()
@@ -143,9 +149,7 @@ export default class SeekTime extends UICorePlugin {
     this.rendered = true
     this.displayedDuration = null
     this.displayedSeekTime = null
-    const style = Styler.getStyleFor(seekTimeStyle)
     this.$el.html(this.template())
-    this.$el.append(style)
     this.$el.hide()
     this.mediaControl.$el.append(this.el)
     this.$seekTimeEl = this.$el.find('[data-seek-time]')

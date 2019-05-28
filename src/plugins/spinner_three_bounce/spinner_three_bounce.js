@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import UIContainerPlugin from 'base/ui_container_plugin'
-import Events from 'base/events'
-import Styler from 'base/styler'
-import template from 'base/template'
+import UIContainerPlugin from '../../base/ui_container_plugin'
+import Events from '../../base/events'
+import template from '../../base/template'
 import spinnerHTML from './public/spinner.html'
-import spinnerStyle from './public/spinner.scss'
+import './public/spinner.scss'
 
 export default class SpinnerThreeBouncePlugin extends UIContainerPlugin {
   get name() { return 'spinner' }
@@ -43,9 +42,9 @@ export default class SpinnerThreeBouncePlugin extends UIContainerPlugin {
   }
 
   show() {
-    if (this.showTimeout === null) {
+    if (this.showTimeout === null)
       this.showTimeout = setTimeout(() => this.$el.show(), 300)
-    }
+
   }
 
   hide() {
@@ -58,13 +57,11 @@ export default class SpinnerThreeBouncePlugin extends UIContainerPlugin {
 
   render() {
     this.$el.html(this.template())
-    const style = Styler.getStyleFor(spinnerStyle)
-    this.container.$el.append(style)
     this.container.$el.append(this.$el)
     this.$el.hide()
-    if (this.container.buffering) {
+    if (this.container.buffering)
       this.onBuffering()
-    }
+
     return this
   }
 }

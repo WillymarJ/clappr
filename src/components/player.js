@@ -2,17 +2,18 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import {uniqueId, currentScriptUrl} from 'base/utils'
+import { uniqueId, currentScriptUrl } from '../base/utils'
 
-import BaseObject from 'base/base_object'
-import Events from 'base/events'
-import Browser from 'components/browser'
-import CoreFactory from 'components/core_factory'
-import Loader from 'components/loader'
-import PlayerInfo from 'components/player_info'
+import BaseObject from '../base/base_object'
+import Events from '../base/events'
+import Browser from './browser'
+import CoreFactory from './core_factory'
+import Loader from './loader'
+import PlayerInfo from './player_info'
+import ErrorMixin from '../base/error_mixin'
 import $ from 'clappr-zepto'
 
-const baseUrl = currentScriptUrl().replace(/\/[^\/]+$/, '')
+const baseUrl = currentScriptUrl().replace(/\/[^/]+$/, '')
 
 /**
  * @class Player
@@ -42,9 +43,9 @@ export default class Player extends BaseObject {
 
   set loader(loader) { this._loader = loader }
   get loader() {
-    if (!this._loader) {
+    if (!this._loader)
       this._loader = new Loader(this.options.plugins || {}, this.options.playerId)
-    }
+
     return this._loader
   }
 
@@ -54,7 +55,7 @@ export default class Player extends BaseObject {
    * @type Boolean
    */
   get ended() {
-    return this.core.mediaControl.container.ended
+    return this.core.activeContainer.ended
   }
 
   /**
@@ -65,7 +66,7 @@ export default class Player extends BaseObject {
    * @type Boolean
    */
   get buffering() {
-    return this.core.mediaControl.container.buffering
+    return this.core.activeContainer.buffering
   }
 
   /*
@@ -93,9 +94,52 @@ export default class Player extends BaseObject {
       onSeek: Events.PLAYER_SEEK,
       onError: Events.PLAYER_ERROR,
       onTimeUpdate: Events.PLAYER_TIMEUPDATE,
-      onVolumeUpdate: Events.PLAYER_VOLUMEUPDATE
+      onVolumeUpdate: Events.PLAYER_VOLUMEUPDATE,
+      onSubtitleAvailable: Events.PLAYER_SUBTITLE_AVAILABLE
     }
   }
+
+  /**
+   * @typedef {Object} PlaybackConfig
+   * @prop {boolean} disableContextMenu
+   * disables the context menu (right click) on the video element if a HTML5Video playback is used.
+   * @prop {boolean} preload
+   * video will be preloaded according to `preload` attribute options **default**: `'metadata'`
+   * @prop {boolean} controls
+   * enabled/disables displaying controls
+   * @prop {boolean} crossOrigin
+   * enables cross-origin capability for media-resources
+   * @prop {boolean} playInline
+   * enables in-line video elements
+   * @prop {boolean} audioOnly
+   * enforce audio-only playback (when possible)
+   * @prop {Object} externalTracks
+   * pass externaly loaded track to playback
+   * @prop {Number} [maxBufferLength]
+   * The default behavior for the **HLS playback** is to keep buffering indefinitely, even on VoD.
+   * This replicates the behavior for progressive download, which continues buffering when pausing the video, thus making the video available for playback even on slow networks.
+   * To change this behavior use `maxBufferLength` where **value is in seconds**.
+   * @prop {Number} [maxBackBufferLength]
+   * After how much distance of the playhead data should be pruned from the buffer (influences memory consumption
+   * of adaptive media-engines like Hls.js or Shaka)
+   * @prop {Number} [minBufferLength]
+   * After how much data in the buffer at least we attempt to consume it (influences QoS-related behavior
+   * of adaptive media-engines like Hls.js or Shaka). If this is too low, and the available bandwidth is varying a lot
+   * and too close to the streamed bitrate, we may continuously hit under-runs.
+   * @prop {Number} [initialBandwidthEstimate]
+   * define an initial bandwidth "guess" (or previously stored/established value) for underlying adaptive-bitreate engines
+   * of adaptive playback implementations, like Hls.js or Shaka
+   * @prop {Number} [maxAdaptiveBitrate]
+   * Limits the streamed bitrate (for adaptive media-engines in underlying playback implementations)
+   * @prop {Object} [maxAdaptiveVideoDimensions]
+   * Limits the video dimensions in adaptive media-engines. Should be a literal object with `height` and `width`.
+   * @prop {Boolean}[enableAutomaticABR] **default**: `true`
+   * Allows to enable/disable automatic bitrate switching in adaptive media-engines
+   * @prop {String} [preferredTextLanguage] **default**: `'pt-BR'`
+   * Allows to set a preferred text language, that may be enabled by the media-engine if available.
+   * @prop {String} [preferredAudioLanguage] **default**: `'pt-BR'`
+   * Allows to set a preferred audio language, that may be enabled by the media-engine if available.
+   */
 
   /**
    * ## Player's constructor
@@ -131,19 +175,19 @@ export default class Player extends BaseObject {
    * whether or not the player should handle click events when in chromeless mode **default**: `false` on desktops browsers, `true` on mobile.
    * @param {Boolean} [options.disableKeyboardShortcuts]
    * disable keyboard shortcuts. **default**: `false`. `true` if `allowUserInteraction` is `false`.
-   * @param {Boolean} [options.muted]
+   * @param {Boolean} [options.mute]
    * start the video muted **default**: `false`
    * @param {String} [options.mimeType]
    * add `mimeType: "application/vnd.apple.mpegurl"` if you need to use a url without extension.
-   * @param {String} [options.actualLiveTime]
+   * @param {Boolean} [options.actualLiveTime]
    * show duration and seek time relative to actual time.
    * @param {String} [options.actualLiveServerTime]
    * specify server time as a string, format: "2015/11/26 06:01:03". This option is meant to be used with actualLiveTime.
    * @param {Boolean} [options.persistConfig]
    * persist player's settings (volume) through the same domain **default**: `true`
-   * @param {String} [options.preload]
+   * @param {String} [options.preload] @deprecated
    * video will be preloaded according to `preload` attribute options **default**: `'metadata'`
-   * @param {Number} [options.maxBufferLength]
+   * @param {Number} [options.maxBufferLength] @deprecated
    * the default behavior for the **HLS playback** is to keep buffering indefinitely, even on VoD.
    * This replicates the behavior for progressive download, which continues buffering when pausing the video, thus making the video available for playback even on slow networks.
    * To change this behavior use `maxBufferLength` where **value is in seconds**.
@@ -162,7 +206,7 @@ export default class Player extends BaseObject {
    * You can customize corner position by defining position parameter. Positions can be `bottom-left`, `bottom-right`, `top-left` and `top-right`.
    * @param {String} [options.watermarkLink]
    * `watermarkLink: 'http://example.net/'` - define URL to open when the watermark is clicked. If not provided watermark will not be clickable.
-   * @param {Boolean} [options.disableVideoTagContextMenu]
+   * @param {Boolean} [options.disableVideoTagContextMenu] @deprecated
    * disables the context menu (right click) on the video element if a HTML5Video playback is used.
    * @param {Boolean} [options.autoSeekFromUrl]
    * Automatically seek to the seconds provided in the url (e.g example.com?t=100) **default**: `true`
@@ -175,10 +219,26 @@ export default class Player extends BaseObject {
    * @param {Object} [options.events]
    * Specify listeners which will be registered with their corresponding player events.
    * E.g. onReady -> "PLAYER_READY", onTimeUpdate -> "PLAYER_TIMEUPDATE"
+   * @param {PlaybackConfig} [options.playback]
+   * Generic `Playback` component related configuration
+   * @param {Boolean} [options.disableErrorScreen]
+   * disables the error screen plugin.
+   * @param {Number} [options.autoPlayTimeout]
+   * autoplay check timeout.
    */
+
   constructor(options) {
     super(options)
-    const defaultOptions = {playerId: uniqueId(''), persistConfig: true, width: 640, height: 360, baseUrl: baseUrl, allowUserInteraction: Browser.isMobile}
+    const playbackDefaultOptions = { recycleVideo : true }
+    const defaultOptions = {
+      playerId: uniqueId(''),
+      persistConfig: true,
+      width: 640,
+      height: 360,
+      baseUrl: baseUrl,
+      allowUserInteraction: Browser.isMobile,
+      playback: playbackDefaultOptions
+    }
     this._options = $.extend(defaultOptions, options)
     this.options.sources = this._normalizeSources(options)
     if (!this.options.chromeless) {
@@ -189,17 +249,17 @@ export default class Player extends BaseObject {
       // if user iteraction is not allowed ensure keyboard shortcuts are disabled
       this.options.disableKeyboardShortcuts = true
     }
-    this._registerOptionEventListeners()
+    this._registerOptionEventListeners(this.options.events)
     this._coreFactory = new CoreFactory(this)
     this.playerInfo = PlayerInfo.getInstance(this.options.playerId)
-    this.playerInfo.currentSize = {width: options.width, height: options.height}
+    this.playerInfo.currentSize = { width: options.width, height: options.height }
     this.playerInfo.options = this.options
-    if (this.options.parentId) {
+    if (this.options.parentId)
       this.setParentId(this.options.parentId)
-    }
-    else if (this.options.parent) {
+
+    else if (this.options.parent)
       this.attachTo(this.options.parent)
-    }
+
   }
 
   /**
@@ -210,9 +270,9 @@ export default class Player extends BaseObject {
    */
   setParentId(parentId) {
     const el = document.querySelector(parentId)
-    if (el) {
+    if (el)
       this.attachTo(el)
-    }
+
     return this
   }
 
@@ -230,18 +290,19 @@ export default class Player extends BaseObject {
   }
 
   _addEventListeners() {
-    if (!this.core.isReady) {
+    if (!this.core.isReady)
       this.listenToOnce(this.core, Events.CORE_READY, this._onReady)
-    } else {
+    else
       this._onReady()
-    }
-    this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_CONTAINERCHANGED, this._containerChanged)
+
+    this.listenTo(this.core, Events.CORE_ACTIVE_CONTAINER_CHANGED, this._containerChanged)
     this.listenTo(this.core, Events.CORE_FULLSCREEN, this._onFullscreenChange)
+    this.listenTo(this.core, Events.CORE_RESIZE, this._onResize)
     return this
   }
 
   _addContainerEventListeners() {
-    const container = this.core.mediaControl.container
+    const container = this.core.activeContainer
     if (container) {
       this.listenTo(container, Events.CONTAINER_PLAY, this._onPlay)
       this.listenTo(container, Events.CONTAINER_PAUSE, this._onPause)
@@ -251,16 +312,22 @@ export default class Player extends BaseObject {
       this.listenTo(container, Events.CONTAINER_ERROR, this._onError)
       this.listenTo(container, Events.CONTAINER_TIMEUPDATE, this._onTimeUpdate)
       this.listenTo(container, Events.CONTAINER_VOLUME, this._onVolumeUpdate)
+      this.listenTo(container, Events.CONTAINER_SUBTITLE_AVAILABLE, this._onSubtitleAvailable)
     }
     return this
   }
 
-  _registerOptionEventListeners() {
-    const userEvents = this.options.events || {}
-    Object.keys(userEvents).forEach((userEvent) => {
+  _registerOptionEventListeners(newEvents = {}, events = {}) {
+    const hasNewEvents = Object.keys(newEvents).length > 0
+    hasNewEvents && Object.keys(events).forEach((userEvent) => {
+      const eventType = this.eventsMapping[userEvent]
+      eventType && this.off(eventType, events[userEvent])
+    })
+
+    Object.keys(newEvents).forEach((userEvent) => {
       const eventType = this.eventsMapping[userEvent]
       if (eventType) {
-        let eventFunction = userEvents[userEvent]
+        let eventFunction = newEvents[userEvent]
         eventFunction = typeof eventFunction === 'function' && eventFunction
         eventFunction && this.on(eventType, eventFunction)
       }
@@ -285,6 +352,14 @@ export default class Player extends BaseObject {
 
   _onVolumeUpdate(volume) {
     this.trigger(Events.PLAYER_VOLUMEUPDATE, volume)
+  }
+
+  _onSubtitleAvailable() {
+    this.trigger(Events.PLAYER_SUBTITLE_AVAILABLE)
+  }
+
+  _onResize(size) {
+    this.trigger(Events.PLAYER_RESIZE, size)
   }
 
   _onPlay() {
@@ -317,7 +392,7 @@ export default class Player extends BaseObject {
 
   _normalizeSources(options) {
     const sources = options.sources || (options.source !== undefined? [options.source] : [])
-    return sources.length === 0 ? [{source:'', mimeType:''}] : sources
+    return sources.length === 0 ? [{ source:'', mimeType:'' }] : sources
   }
 
   /**
@@ -345,9 +420,9 @@ export default class Player extends BaseObject {
    * @return {Player} itself
    */
   load(sources, mimeType, autoPlay) {
-    if (autoPlay !== undefined) {
-      this.configure({autoPlay: !!autoPlay})
-    }
+    if (autoPlay !== undefined)
+      this.configure({ autoPlay: !!autoPlay })
+
     this.core.load(sources, mimeType)
     return this
   }
@@ -358,6 +433,7 @@ export default class Player extends BaseObject {
    * @return {Player} itself
    */
   destroy() {
+    this.stopListening()
     this.core.destroy()
     return this
   }
@@ -378,7 +454,7 @@ export default class Player extends BaseObject {
    * @return {Player} itself
    */
   play() {
-    this.core.mediaControl.container.play()
+    this.core.activeContainer.play()
     return this
   }
 
@@ -388,7 +464,7 @@ export default class Player extends BaseObject {
    * @return {Player} itself
    */
   pause() {
-    this.core.mediaControl.container.pause()
+    this.core.activeContainer.pause()
     return this
   }
 
@@ -398,7 +474,7 @@ export default class Player extends BaseObject {
    * @return {Player} itself
    */
   stop() {
-    this.core.mediaControl.container.stop()
+    this.core.activeContainer.stop()
     return this
   }
 
@@ -410,7 +486,7 @@ export default class Player extends BaseObject {
    * @return {Player} itself
    */
   seek(time) {
-    this.core.mediaControl.container.seek(time)
+    this.core.activeContainer.seek(time)
     return this
   }
 
@@ -421,30 +497,8 @@ export default class Player extends BaseObject {
    * @return {Player} itself
    */
   seekPercentage(percentage) {
-    this.core.mediaControl.container.seekPercentage(percentage)
+    this.core.activeContainer.seekPercentage(percentage)
     return this
-  }
-
-  /**
-   * Set the volume for the current video (`source`).
-   * @method setVolume
-   * @param {Number} volume should be a number between 0 and 100, 0 being mute and 100 the max volume.
-   * @return {Player} itself
-   */
-  setVolume(volume) {
-    if (this.core && this.core.mediaControl) {
-      this.core.mediaControl.setVolume(volume)
-    }
-    return this
-  }
-
-  /**
-   * Get the volume for the current video
-   * @method getVolume
-   * @return {Number} volume should be a number between 0 and 100, 0 being mute and 100 the max volume.
-   */
-  getVolume() {
-    return this.core && this.core.mediaControl ? this.core.mediaControl.volume : 0
   }
 
   /**
@@ -475,7 +529,7 @@ export default class Player extends BaseObject {
    * @return {Boolean} `true` if the current source is playing, otherwise `false`
    */
   isPlaying() {
-    return this.core.mediaControl.container.isPlaying()
+    return this.core.activeContainer.isPlaying()
   }
 
   /**
@@ -484,7 +538,7 @@ export default class Player extends BaseObject {
    * @return {Boolean}
    */
   isDvrEnabled() {
-    return this.core.mediaControl.container.isDvrEnabled()
+    return this.core.activeContainer.isDvrEnabled()
   }
 
   /**
@@ -493,7 +547,7 @@ export default class Player extends BaseObject {
    * @return {Boolean}
    */
   isDvrInUse() {
-    return this.core.mediaControl.container.isDvrInUse()
+    return this.core.activeContainer.isDvrInUse()
   }
 
   /**
@@ -502,7 +556,8 @@ export default class Player extends BaseObject {
    * @param {Object} options all the options to change in form of a javascript object
    * @return {Player} itself
    */
-  configure(options) {
+  configure(options = {}) {
+    this._registerOptionEventListeners(options.events, this.options.events)
     this.core.configure(options)
     return this
   }
@@ -519,7 +574,7 @@ export default class Player extends BaseObject {
    * ```
    */
   getPlugin(name) {
-    const plugins = this.core.plugins.concat(this.core.mediaControl.container.plugins)
+    const plugins = this.core.plugins.concat(this.core.activeContainer.plugins)
     return plugins.filter(plugin => plugin.name === name)[0]
   }
 
@@ -529,7 +584,7 @@ export default class Player extends BaseObject {
    * @return {Number} current time (in seconds) of the current source
    */
   getCurrentTime() {
-    return this.core.mediaControl.container.getCurrentTime()
+    return this.core.activeContainer.getCurrentTime()
   }
 
   /**
@@ -540,7 +595,7 @@ export default class Player extends BaseObject {
    * @return {Number} time (in seconds) that time "0" represents.
    */
   getStartTimeOffset() {
-    return this.core.mediaControl.container.getStartTimeOffset()
+    return this.core.activeContainer.getStartTimeOffset()
   }
 
   /**
@@ -549,6 +604,8 @@ export default class Player extends BaseObject {
    * @return {Number} duration time (in seconds) of the current source
    */
   getDuration() {
-    return this.core.mediaControl.container.getDuration()
+    return this.core.activeContainer.getDuration()
   }
 }
+
+Object.assign(Player.prototype, ErrorMixin)

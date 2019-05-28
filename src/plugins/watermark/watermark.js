@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-import UIContainerPlugin from 'base/ui_container_plugin'
-import Events from 'base/events'
-import Styler from 'base/styler'
-import template from 'base/template'
-import watermarkStyle from './public/watermark.scss'
+import UIContainerPlugin from '../../base/ui_container_plugin'
+import Events from '../../base/events'
+import template from '../../base/template'
 import watermarkHTML from './public/watermark.html'
+import './public/watermark.scss'
 
 export default class WaterMarkPlugin extends UIContainerPlugin {
   get name() { return 'watermark' }
@@ -31,9 +30,8 @@ export default class WaterMarkPlugin extends UIContainerPlugin {
       this.imageUrl = this.options.watermark
       this.imageLink = this.options.watermarkLink
       this.render()
-    } else {
-      this.$el.remove()
-    }
+    } else { this.$el.remove() }
+
   }
 
   onPlay() {
@@ -47,10 +45,8 @@ export default class WaterMarkPlugin extends UIContainerPlugin {
 
   render() {
     this.$el.hide()
-    const templateOptions = {position: this.position, imageUrl: this.imageUrl, imageLink: this.imageLink}
+    const templateOptions = { position: this.position, imageUrl: this.imageUrl, imageLink: this.imageLink }
     this.$el.html(this.template(templateOptions))
-    const style = Styler.getStyleFor(watermarkStyle)
-    this.container.$el.append(style)
     this.container.$el.append(this.$el)
     return this
   }
